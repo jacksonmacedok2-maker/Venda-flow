@@ -21,9 +21,6 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   
-  const [showSignupPassword, setShowSignupPassword] = useState(false);
-  const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
-
   const [signupData, setSignupData] = useState({
     name: '',
     email: '',
@@ -77,7 +74,7 @@ const Login: React.FC = () => {
       };
 
       await signUp(signupData.email, signupData.password, metadata);
-      setSuccessMessage('Instância ativada! Redirecionando...');
+      setSuccessMessage('Instância configurada com sucesso! Redirecionando...');
     } catch (err: any) {
       setError(err.message || 'Erro ao criar conta.');
       setIsLoading(false);
@@ -92,7 +89,7 @@ const Login: React.FC = () => {
 
     try {
       await resetPassword(email);
-      setSuccessMessage('Link de recuperação enviado para o seu e-mail.');
+      setSuccessMessage('Link de recuperação de acesso solicitado para o e-mail.');
       setIsLoading(false);
     } catch (err: any) {
       setError(err.message || 'Erro ao solicitar recuperação.');
@@ -121,8 +118,7 @@ const Login: React.FC = () => {
   };
 
   const isCnpjReady = documentType === 'CNPJ' && signupData.document.replace(/\D/g, '').length === 14;
-  const passwordsMatch = signupData.password === signupData.confirmPassword;
-  const showConfirmError = signupData.confirmPassword.length > 0 && !passwordsMatch;
+  const showConfirmError = signupData.confirmPassword.length > 0 && signupData.password !== signupData.confirmPassword;
 
   if (isRedirecting) {
     return (
@@ -239,7 +235,7 @@ const Login: React.FC = () => {
                       onClick={() => { setMode('FORGOT_PASSWORD'); setError(''); }}
                       className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline"
                     >
-                      Esqueceu a senha?
+                      Recuperar acesso?
                     </button>
                   </div>
                   <div className="relative group">
@@ -257,8 +253,8 @@ const Login: React.FC = () => {
 
               <div className="pt-10 border-t border-slate-100 dark:border-slate-800 text-center space-y-5">
                 <div className="space-y-1">
-                  <h4 className="text-sm font-black text-slate-800 dark:text-white tracking-tight uppercase">Ainda não tem conta?</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium italic">Crie sua instância gratuitamente em segundos.</p>
+                  <h4 className="text-sm font-black text-slate-800 dark:text-white tracking-tight uppercase">Ativar nova instância?</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium italic">Configuração de infraestrutura gratuita e imediata.</p>
                 </div>
                 <button 
                   type="button" 
@@ -286,30 +282,13 @@ const Login: React.FC = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center ml-2">
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{documentType}</label>
-                    {documentType === 'CNPJ' && (
-                      <span className="text-[9px] font-black text-emerald-500 uppercase tracking-tighter flex items-center gap-1">
-                        <Sparkles size={10} /> Inteligência Automática Ativa
-                      </span>
-                    )}
                   </div>
                   <div className={`relative group transition-all duration-300 ${isCnpjReady ? 'ring-4 ring-indigo-500/10 rounded-[1.5rem]' : ''}`}>
                     <Landmark className={`absolute left-5 top-1/2 -translate-y-1/2 transition-colors ${isCnpjReady ? 'text-indigo-500' : 'text-slate-400'}`} size={20} />
-                    <input 
-                      type="text" 
-                      required 
-                      placeholder={documentType === 'CNPJ' ? "00.000.000/0001-00" : "000.000.000-00"} 
-                      className="w-full pl-14 pr-[120px] py-5 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500 rounded-[1.5rem] focus:outline-none focus:ring-8 focus:ring-indigo-500/5 transition-all text-slate-800 dark:text-white font-black tracking-tight" 
-                      value={signupData.document} 
-                      onChange={(e) => setSignupData({...signupData, document: e.target.value})} 
-                    />
+                    <input type="text" required placeholder={documentType === 'CNPJ' ? "00.000.000/0001-00" : "000.000.000-00"} className="w-full pl-14 pr-[120px] py-5 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500 rounded-[1.5rem] focus:outline-none focus:ring-8 focus:ring-indigo-500/5 transition-all text-slate-800 dark:text-white font-black tracking-tight" value={signupData.document} onChange={(e) => setSignupData({...signupData, document: e.target.value})} />
                     {documentType === 'CNPJ' && isCnpjReady && (
                       <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                        <button 
-                          type="button" 
-                          onClick={lookupCnpj} 
-                          disabled={isSearchingCnpj} 
-                          className="bg-indigo-600 text-white text-[9px] font-black px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-lg active:scale-95 transition-all uppercase tracking-widest"
-                        >
+                        <button type="button" onClick={lookupCnpj} disabled={isSearchingCnpj} className="bg-indigo-600 text-white text-[9px] font-black px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-lg active:scale-95 transition-all uppercase tracking-widest">
                           {isSearchingCnpj ? <Loader2 className="animate-spin" size={14} /> : <Search size={14} />}
                           {isSearchingCnpj ? '...' : 'BUSCAR'}
                         </button>
@@ -340,19 +319,15 @@ const Login: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-2">Senha</label>
-                    <input type={showSignupPassword ? "text" : "password"} required placeholder="Mín. 6 chars" className="w-full px-6 py-5 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500 rounded-[1.5rem] text-sm font-black focus:outline-none" value={signupData.password} onChange={(e) => setSignupData({...signupData, password: e.target.value})} />
+                    <input type="password" required placeholder="Mín. 6 chars" className="w-full px-6 py-5 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500 rounded-[1.5rem] text-sm font-black focus:outline-none" value={signupData.password} onChange={(e) => setSignupData({...signupData, password: e.target.value})} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-2">Confirmação</label>
-                    <input type={showSignupConfirmPassword ? "text" : "password"} required placeholder="Repita" className="w-full px-6 py-5 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500 rounded-[1.5rem] text-sm font-black focus:outline-none" value={signupData.confirmPassword} onChange={(e) => setSignupData({...signupData, confirmPassword: e.target.value})} />
+                    <input type="password" required placeholder="Repita" className="w-full px-6 py-5 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500 rounded-[1.5rem] text-sm font-black focus:outline-none" value={signupData.confirmPassword} onChange={(e) => setSignupData({...signupData, confirmPassword: e.target.value})} />
                   </div>
                 </div>
 
-                <button 
-                  type="submit" 
-                  disabled={isLoading || isSearchingCnpj || showConfirmError} 
-                  className={`w-full py-6 text-white rounded-[1.5rem] font-black text-xs flex items-center justify-center gap-4 transition-all shadow-2xl active:scale-[0.98] uppercase tracking-[0.2em] mt-6 ${showConfirmError ? 'bg-slate-400 opacity-50' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/40'}`}
-                >
+                <button type="submit" disabled={isLoading || isSearchingCnpj || showConfirmError} className={`w-full py-6 text-white rounded-[1.5rem] font-black text-xs flex items-center justify-center gap-4 transition-all shadow-2xl active:scale-[0.98] uppercase tracking-[0.2em] mt-6 ${showConfirmError ? 'bg-slate-400 opacity-50' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/40'}`}>
                   {isLoading ? <Loader2 className="animate-spin" size={22} /> : <>Ativar minha plataforma</>}
                 </button>
               </form>
@@ -366,23 +341,16 @@ const Login: React.FC = () => {
                    <KeyRound size={24} />
                 </div>
                 <p className="text-xs font-bold text-slate-600 dark:text-slate-400 leading-relaxed italic">
-                  Enviaremos uma chave de acesso para o e-mail cadastrado na sua instância.
+                  Um link de redefinição de acesso imediato será enviado para sua conta.
                 </p>
               </div>
 
               <form onSubmit={handleForgotSubmit} className="space-y-6">
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] ml-2">Seu E-mail de Acesso</label>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] ml-2">E-mail de Acesso</label>
                   <div className="relative group">
                     <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
-                    <input 
-                      type="email" 
-                      required 
-                      placeholder="seu@email.com" 
-                      className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500 rounded-[1.5rem] focus:outline-none focus:ring-8 focus:ring-indigo-500/5 transition-all text-slate-800 dark:text-white font-black tracking-tight" 
-                      value={email} 
-                      onChange={(e) => setEmail(e.target.value)} 
-                    />
+                    <input type="email" required placeholder="seu@email.com" className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500 rounded-[1.5rem] focus:outline-none focus:ring-8 focus:ring-indigo-500/5 transition-all text-slate-800 dark:text-white font-black tracking-tight" value={email} onChange={(e) => setEmail(e.target.value)} />
                   </div>
                 </div>
                 <button type="submit" disabled={isLoading} className="w-full py-6 bg-indigo-600 text-white rounded-[1.5rem] font-black text-xs flex items-center justify-center gap-4 shadow-2xl shadow-indigo-600/40 hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-70 uppercase tracking-[0.25em]">
@@ -403,15 +371,5 @@ const Login: React.FC = () => {
     </div>
   );
 };
-
-const BenefitItem = ({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) => (
-  <div className="flex gap-4 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-transparent hover:border-indigo-500/10 transition-all">
-    <div className="shrink-0">{icon}</div>
-    <div className="space-y-0.5">
-      <p className="text-[10px] font-black text-slate-800 dark:text-white uppercase tracking-wider">{title}</p>
-      <p className="text-[10px] text-slate-500 leading-tight font-medium italic">{description}</p>
-    </div>
-  </div>
-);
 
 export default Login;

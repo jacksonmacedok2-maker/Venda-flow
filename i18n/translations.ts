@@ -41,9 +41,7 @@ export const translations = {
     access_orders: 'Acesso aos Pedidos',
     access_pos: 'Acesso ao PDV',
     access_settings: 'Acesso às Configurações',
-    access_reports: 'Acesso aos Relatórios',
-    email_delivery: 'E-mail & Entregabilidade',
-    email_delivery_sub: 'Evite que e-mails de confirmação caiam no Spam.'
+    access_reports: 'Acesso aos Relatórios'
   },
   'en': {
     settings: 'Settings',
@@ -84,8 +82,6 @@ export const translations = {
     access_orders: 'Access Orders',
     access_pos: 'Access POS',
     access_settings: 'Access Settings',
-    access_reports: 'Access Reports',
-    email_delivery: 'Email & Deliverability',
-    email_delivery_sub: 'Prevent confirmation emails from landing in Spam.'
+    access_reports: 'Access Reports'
   }
 };

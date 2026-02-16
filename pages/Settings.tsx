@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Building2, Users, ShoppingBag, Box, Store, Wallet, Bell, Link2, Monitor, ChevronRight, Save, CheckCircle2, UserPlus, Trash2, Edit2, X, Lock, Cpu, Server } from 'lucide-react';
+import { Building2, Users, ShoppingBag, Box, Store, Wallet, Bell, Link2, Monitor, ChevronRight, Save, CheckCircle2, UserPlus, Trash2, Edit2, X, Lock, Cpu } from 'lucide-react';
 import { useAppSettings, ThemeMode } from '../contexts/AppSettingsContext';
 import { Language } from '../i18n/translations';
 import { User, UserRole, Permission } from '../types';
@@ -86,7 +86,7 @@ const Settings: React.FC = () => {
                 w-full flex items-center justify-between p-4 rounded-2xl transition-all
                 ${activeSection === item.id 
                   ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20 font-black' 
-                  : 'text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 hover:shadow-sm'}
+                  : 'text-slate-50 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 hover:shadow-sm'}
               `}
             >
               <div className="flex items-center gap-3">

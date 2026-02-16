@@ -21,7 +21,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Verificar sessão atual ao carregar
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         updateUserState(session.user);
@@ -29,7 +28,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    // Escutar mudanças no estado de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         updateUserState(session.user);
@@ -81,12 +79,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (error) throw error;
     
-    // Se a confirmação de e-mail estiver desativada, data.session existirá imediatamente
+    // Sucesso imediato: Se houver sessão, o usuário é logado na hora.
     if (data.session) {
       updateUserState(data.user);
       return false; 
     }
     
+    // Se não houver sessão imediata mas houver usuário, retornamos true indicando sucesso de criação.
     return !!(data.user && !data.session);
   };
 
@@ -113,7 +112,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] animate-pulse">Conectando ao Nexero Cloud...</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] animate-pulse">Estabelecendo Conexão Segura...</p>
         </div>
       </div>
     );
