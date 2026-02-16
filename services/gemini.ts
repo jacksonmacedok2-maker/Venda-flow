@@ -31,9 +31,11 @@ async function decodeAudioData(
 }
 
 export const geminiService = {
-  // Fix: Create GoogleGenAI instance right before the API call to ensure up-to-date API key usage.
   async getSalesInsights(stats: any) {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) return "Insights não disponíveis (Chave de API ausente).";
+
+    const ai = new GoogleGenAI({ apiKey });
     const prompt = `Analise os seguintes dados de vendas de hoje para uma pequena empresa:
     Vendas do dia: R$ ${stats.dailySales}
     Receita mensal: R$ ${stats.monthlyRevenue}
@@ -44,11 +46,9 @@ export const geminiService = {
 
     try {
       const response = await ai.models.generateContent({
-        // Fix: Use the recommended gemini-3-flash-preview model for simple summarization/Q&A tasks.
         model: 'gemini-3-flash-preview',
         contents: prompt,
       });
-      // Fix: Access .text property directly (not as a method).
       return response.text;
     } catch (error) {
       console.error("Erro ao obter insights:", error);
@@ -56,12 +56,13 @@ export const geminiService = {
     }
   },
 
-  // Fix: Create GoogleGenAI instance right before the API call to ensure up-to-date API key usage.
   async speakInsight(text: string) {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) return;
+
+    const ai = new GoogleGenAI({ apiKey });
     try {
       const response = await ai.models.generateContent({
-        // Fix: Use the correct model for text-to-speech tasks.
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: `Diga de forma profissional e encorajadora: ${text}` }] }],
         config: {
@@ -74,7 +75,6 @@ export const geminiService = {
         },
       });
 
-      // Fix: Correct path to audio data in candidates response.
       const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (!audioBase64) return;
 
