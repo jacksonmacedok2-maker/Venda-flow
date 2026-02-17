@@ -1,6 +1,6 @@
 
 import { supabase } from './supabase';
-import { Client, Order, Transaction, Product, OrderItem, CommercialSettings, CompanySettings } from '../types';
+import { Client, Order, Transaction, Product, OrderItem, CommercialSettings, CompanySettings, Invitation, InviteRole } from '../types';
 
 const STORAGE_KEYS = {
   CLIENTS: 'nexero_cache_clients',
@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   FINANCE: 'nexero_cache_finance',
   COMMERCIAL: 'nexero_cache_commercial',
   COMPANY: 'nexero_cache_company',
+  INVITATIONS: 'nexero_cache_invitations',
   SYNC_QUEUE: 'nexero_sync_queue'
 };
 
@@ -44,6 +45,77 @@ export const db = {
       }
     }
     localStore.set(STORAGE_KEYS.SYNC_QUEUE, remainingQueue);
+  },
+
+  team: {
+    async getActiveCompanyId(): Promise<string | null> {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return null;
+
+      const { data, error } = await supabase
+        .from('memberships')
+        .select('company_id')
+        .eq('user_id', session.user.id)
+        .eq('status', 'ACTIVE')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        // Fallback: se não houver memberships, usamos o ID do usuário como company_id padrão
+        // (Isso assume que a empresa principal tem o mesmo ID do dono inicial)
+        return session.user.id;
+      }
+      return data?.company_id || session.user.id;
+    },
+
+    async getInvitations(): Promise<Invitation[]> {
+      const companyId = await this.getActiveCompanyId();
+      if (!companyId) return [];
+
+      const { data, error } = await supabase
+        .from('invitations')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      localStore.set(STORAGE_KEYS.INVITATIONS, data);
+      return data;
+    },
+
+    async generateInvitation(email: string, role: InviteRole): Promise<Invitation> {
+      const { data: { session } } = await supabase.auth.getSession();
+      const companyId = await this.getActiveCompanyId();
+      if (!session?.user || !companyId) throw new Error("Não autorizado");
+
+      const token = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // 7 dias de expiração
+
+      const invite = {
+        company_id: companyId,
+        invited_email: email,
+        role: role,
+        status: 'PENDING',
+        token: token,
+        expires_at: expiresAt.toISOString(),
+        created_by: session.user.id
+      };
+
+      const { data, error } = await supabase
+        .from('invitations')
+        .insert([invite])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+
+    async deleteInvitation(id: string) {
+      const { error } = await supabase.from('invitations').delete().eq('id', id);
+      if (error) throw error;
+    }
   },
 
   company: {
@@ -125,17 +197,6 @@ export const db = {
         .getPublicUrl(filePath);
 
       return data.publicUrl;
-    },
-
-    async removeLogo(url: string) {
-      try {
-        const path = url.split('company-logos/').pop();
-        if (path) {
-          await supabase.storage.from('company-logos').remove([path]);
-        }
-      } catch (e) {
-        console.error("Erro ao remover logo antiga:", e);
-      }
     }
   },
 
@@ -373,13 +434,6 @@ export const db = {
       } else {
         localStore.addToQueue('ORDER', { order, items });
         return { id: 'offline_temp', ...order };
-      }
-    },
-
-    async updateStatus(orderId: string, status: string) {
-      if (navigator.onLine) {
-        const { error } = await supabase.from('orders').update({ status }).eq('id', orderId);
-        if (error) throw error;
       }
     }
   },

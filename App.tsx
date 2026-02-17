@@ -10,6 +10,7 @@ import POS from './pages/POS';
 import Settings from './pages/Settings';
 import Clients from './pages/Clients';
 import Reports from './pages/Reports';
+import Team from './pages/Team';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import AuthConfirmed from './pages/AuthConfirmed';
@@ -106,6 +107,8 @@ const AppContent: React.FC = () => {
         return hasPermission('CLIENTS') ? <Clients /> : <AccessDenied />;
       case '/pos':
         return hasPermission('POS') ? <POS /> : <AccessDenied />;
+      case '/team':
+        return hasPermission('TEAM') ? <Team /> : <AccessDenied />;
       case '/products':
         return hasPermission('PRODUCTS') ? <Products /> : <AccessDenied />;
       case '/inventory':

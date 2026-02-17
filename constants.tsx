@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, ShoppingCart, Users, Package, DollarSign, Settings, Store, Megaphone, ClipboardList, UserRound, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Users, Package, DollarSign, Settings, Store, Megaphone, ClipboardList, UserRound, BarChart3, Users2 } from 'lucide-react';
 import { Permission } from './types';
 
 export interface NavItem {
@@ -14,6 +14,7 @@ export const NAVIGATION_ITEMS: NavItem[] = [
   { key: 'dashboard', path: '/', icon: <LayoutDashboard size={20} strokeWidth={2} /> },
   { key: 'orders', path: '/orders', icon: <ShoppingCart size={20} strokeWidth={2} />, requiredPermission: 'ORDERS' },
   { key: 'pos', path: '/pos', icon: <Store size={20} strokeWidth={2} />, requiredPermission: 'POS' },
+  { key: 'team', path: '/team', icon: <Users2 size={20} strokeWidth={2} />, requiredPermission: 'TEAM' },
   { key: 'clients', path: '/clients', icon: <UserRound size={20} strokeWidth={2} />, requiredPermission: 'CLIENTS' },
   { key: 'products', path: '/products', icon: <Package size={20} strokeWidth={2} />, requiredPermission: 'PRODUCTS' },
   { key: 'inventory', path: '/inventory', icon: <ClipboardList size={20} strokeWidth={2} />, requiredPermission: 'INVENTORY' },

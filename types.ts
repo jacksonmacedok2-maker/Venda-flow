@@ -13,7 +13,22 @@ export enum UserRole {
   CASHIER = 'Operador de Caixa'
 }
 
-export type Permission = 'FINANCE' | 'INVENTORY' | 'PRODUCTS' | 'ORDERS' | 'POS' | 'SETTINGS' | 'REPORTS' | 'CLIENTS';
+export type Permission = 'FINANCE' | 'INVENTORY' | 'PRODUCTS' | 'ORDERS' | 'POS' | 'SETTINGS' | 'REPORTS' | 'CLIENTS' | 'TEAM';
+
+export type InviteRole = 'ADMIN' | 'SELLER' | 'VIEWER';
+
+export interface Invitation {
+  id: string;
+  company_id: string;
+  invited_email: string;
+  role: InviteRole;
+  status: 'PENDING' | 'ACCEPTED' | 'EXPIRED';
+  token: string;
+  expires_at: string;
+  created_at: string;
+  created_by: string;
+  accepted_at?: string;
+}
 
 export interface User {
   id: string;
@@ -75,7 +90,6 @@ export interface Order {
   payment_method: string;
   notes?: string;
   created_at: string;
-  // Joins
   clients?: { name: string };
   order_items?: OrderItem[];
 }
