@@ -12,6 +12,7 @@ import Clients from './pages/Clients';
 import Reports from './pages/Reports';
 import Team from './pages/Team';
 import Login from './pages/Login';
+import Invite from './pages/Invite';
 import AuthCallback from './pages/AuthCallback';
 import AuthConfirmed from './pages/AuthConfirmed';
 import AuthError from './pages/AuthError';
@@ -74,6 +75,10 @@ const AppContent: React.FC = () => {
     const queryParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     
+    // Rota Especial de Convite (Funciona mesmo deslogado para mostrar card de login)
+    if (path.includes('/auth/invite')) return <Invite setActiveTab={navigateTo} />;
+    
+    // Callbacks e Erros Globais
     if (queryParams.has('error') || hashParams.has('error')) return <AuthError setActiveTab={() => navigateTo('dashboard')} />;
     if (queryParams.has('code') || hashParams.has('access_token')) return <AuthCallback setActiveTab={() => navigateTo('dashboard')} />;
     if (path.includes('/auth/confirmed')) return <AuthConfirmed setActiveTab={() => navigateTo('dashboard')} />;
@@ -109,9 +114,10 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const isAuthPage = !isAuthenticated || window.location.pathname.includes('/auth/');
+  // Verifica se estamos em uma página que NÃO deve exibir o Layout (Login, Invite, Callbacks)
+  const isPlainPage = !isAuthenticated || window.location.pathname.includes('/auth/');
 
-  if (isAuthPage) {
+  if (isPlainPage) {
     return (
       <div className="min-h-screen bg-white dark:bg-slate-950">
         {renderContent()}
