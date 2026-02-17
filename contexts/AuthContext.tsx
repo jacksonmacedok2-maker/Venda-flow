@@ -1,4 +1,5 @@
 
+// Add React import to fix namespace errors for React.FC and React.ReactNode
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { User, UserRole, Permission } from '../types';
 import { supabase } from '../services/supabase';
@@ -34,10 +35,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [membershipRole, setMembershipRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingCompany, setLoadingCompany] = useState(false);
+  const [loading, setLoading] = useState(true); // Bloqueio inicial de sessão
+  const [loadingCompany, setLoadingCompany] = useState(false); // Carregamento de metadados da empresa
   
-  // Ref para rastrear se acabamos de definir uma empresa manualmente para evitar sobrescrita por delay de consulta
   const justSetCompanyManual = useRef(false);
 
   const updateUserState = useCallback((supabaseUser: any) => {
@@ -54,7 +54,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const ensureCompany = useCallback(async (retryCount = 0) => {
-    // Se acabamos de setar manualmente, ignoramos consultas automáticas por 5 segundos
     if (justSetCompanyManual.current && retryCount === 0) return;
 
     setLoadingCompany(true);
@@ -68,18 +67,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCompanyName(membership.companies?.name || 'Minha Empresa');
         setLoadingCompany(false);
         justSetCompanyManual.current = false;
-      } else if (retryCount < 4) {
-        // Se não encontrou, tenta novamente com backoff
-        console.log(`Tentativa ${retryCount + 1} de localizar empresa no banco...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        return ensureCompany(retryCount + 1);
+      } else if (retryCount < 3) {
+        // Tenta novamente se não achar, mas com delay menor
+        setTimeout(() => ensureCompany(retryCount + 1), 1500);
       } else {
-        // Se após todas as tentativas não houver empresa, limpamos apenas se não houver um ID manual
-        if (!justSetCompanyManual.current) {
-          setCompanyId(null);
-          setMembershipRole(null);
-          setCompanyName(null);
-        }
         setLoadingCompany(false);
       }
     } catch (err) {
@@ -94,11 +85,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           updateUserState(session.user);
-          await ensureCompany();
+          // Chamamos ensureCompany sem o AWAIT para não travar a UI principal
+          ensureCompany();
         }
       } catch (err) {
         console.error('Erro na inicialização da autenticação:', err);
       } finally {
+        // Garantimos que o loading principal acabe em no máximo 1-2 segundos
         setLoading(false);
       }
     };
@@ -109,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (session?.user) {
         updateUserState(session.user);
         if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
-          await ensureCompany();
+          ensureCompany();
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
@@ -129,11 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCompanyName(name);
     setMembershipRole(role);
     setLoadingCompany(false);
-
-    // Proteção: após 8 segundos, permitimos que o 'ensure' volte a funcionar normalmente
-    setTimeout(() => {
-      justSetCompanyManual.current = false;
-    }, 8000);
+    setTimeout(() => { justSetCompanyManual.current = false; }, 5000);
   };
 
   const login = async (email: string, password: string) => {
@@ -142,7 +131,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signUp = async (email: string, password: string, metadata: any): Promise<boolean> => {
-    const redirectUrl = window.location.origin + '/';
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -152,10 +140,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: UserRole.ADMIN,
           permissions: ADMIN_PERMISSIONS
         },
-        emailRedirectTo: redirectUrl,
+        emailRedirectTo: window.location.origin + '/',
       }
     });
-
     if (error) throw error;
     return !!(data.user && !data.session);
   };
@@ -182,7 +169,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCompanyId(null);
     setCompanyName(null);
     setMembershipRole(null);
-    justSetCompanyManual.current = false;
     localStorage.clear();
   };
 
@@ -199,15 +185,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const refreshMembership = async () => {
-    await ensureCompany();
+    ensureCompany();
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
         <div className="flex flex-col items-center gap-6">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-600"></div>
-          <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse">Sincronizando Segurança...</p>
+          <div className="relative">
+             <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-brand-600"></div>
+             <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-2 h-2 bg-brand-600 rounded-full animate-ping"></div>
+             </div>
+          </div>
+          <div className="text-center space-y-1">
+            <p className="text-[10px] font-black text-brand-600 uppercase tracking-[0.3em] animate-pulse">Nexero Enterprise</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Validando Sessão de Segurança...</p>
+          </div>
         </div>
       </div>
     );

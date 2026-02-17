@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
@@ -20,7 +20,7 @@ import CreateCompanyModal from './components/CreateCompanyModal';
 import { AppSettingsProvider } from './contexts/AppSettingsContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { db } from './services/database';
-import { Loader2, ShieldCheck } from 'lucide-react';
+import { Loader2, ShieldCheck, Cloud } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const [activeKey, setActiveKey] = useState<string>(() => {
@@ -74,7 +74,6 @@ const AppContent: React.FC = () => {
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     
     if (path.includes('/auth/invite')) return <Invite setActiveTab={navigateTo} />;
-    
     if (queryParams.has('error') || hashParams.has('error')) return <AuthError setActiveTab={() => navigateTo('dashboard')} />;
     if (queryParams.has('code') || hashParams.has('access_token')) return <AuthCallback setActiveTab={() => navigateTo('dashboard')} />;
     if (path.includes('/auth/confirmed')) return <AuthConfirmed setActiveTab={() => navigateTo('dashboard')} />;
@@ -83,21 +82,21 @@ const AppContent: React.FC = () => {
       return <Login />;
     }
 
-    // Se estiver carregando dados da empresa, mostra loader
+    // Gate 1: Se estiver buscando empresa no banco pela primeira vez
     if (loadingCompany && !companyId) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
           <div className="flex flex-col items-center gap-4">
-            <Loader2 className="animate-spin text-brand-600" size={32} />
-            <p className="text-[10px] font-black uppercase tracking-widest animate-pulse">Sincronizando Empresa...</p>
+            <div className="w-12 h-12 bg-brand-600/10 rounded-2xl flex items-center justify-center text-brand-600 animate-bounce">
+              <Cloud size={24} />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 animate-pulse">Sincronizando Organização...</p>
           </div>
         </div>
       );
     }
 
-    // Se estiver logado mas NÃO tiver empresa, obriga a criar.
-    // O callback onSuccess aqui não faz nada além de permitir que o componente re-renderize,
-    // pois o ID da empresa já foi injetado pelo modal.
+    // Gate 2: Usuário logado mas sem empresa vinculada
     if (!companyId) {
       return <CreateCompanyModal onSuccess={() => {}} />;
     }
@@ -143,7 +142,7 @@ const AppContent: React.FC = () => {
       {isSyncing && (
         <div className="fixed bottom-20 right-4 z-[100] bg-brand-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce">
           <Loader2 className="animate-spin" size={18} />
-          <span className="text-[10px] font-black uppercase tracking-widest">Sincronizando...</span>
+          <span className="text-[10px] font-black uppercase tracking-widest">Cloud Sync...</span>
         </div>
       )}
       <div className="pb-10 md:pb-0 h-full">
