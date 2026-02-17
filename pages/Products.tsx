@@ -3,17 +3,20 @@ import React, { useState, useEffect } from 'react';
 import { Package, MoreVertical, TrendingDown, Layers, Search, Plus, Loader2, AlertCircle, X, CheckCircle2, Image as ImageIcon } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import { db } from '../services/database';
+import { useAuth } from '../contexts/AuthContext';
 
 const Products: React.FC = () => {
+  const { companyId } = useAuth();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const fetchProducts = async () => {
+    if (!companyId) return;
     try {
       setLoading(true);
-      const data = await db.products.getAll();
+      const data = await db.products.getAll(companyId);
       setProducts(data);
     } catch (err) {
       console.error("Erro ao carregar produtos:", err);
@@ -24,7 +27,7 @@ const Products: React.FC = () => {
 
   useEffect(() => {
     fetchProducts();
-  }, []);
+  }, [companyId]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -124,12 +127,12 @@ const Products: React.FC = () => {
         </div>
       )}
 
-      {isModalOpen && <ProductModal onClose={() => setIsModalOpen(false)} onRefresh={fetchProducts} />}
+      {isModalOpen && companyId && <ProductModal companyId={companyId} onClose={() => setIsModalOpen(false)} onRefresh={fetchProducts} />}
     </div>
   );
 };
 
-const ProductModal: React.FC<{ onClose: () => void, onRefresh: () => void }> = ({ onClose, onRefresh }) => {
+const ProductModal: React.FC<{ companyId: string, onClose: () => void, onRefresh: () => void }> = ({ companyId, onClose, onRefresh }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
@@ -152,6 +155,7 @@ const ProductModal: React.FC<{ onClose: () => void, onRefresh: () => void }> = (
     setError('');
 
     try {
+      // Fix: Passed companyId as the second argument
       await db.products.create({
         name: formData.name,
         sku: formData.sku.toUpperCase(),
@@ -160,7 +164,7 @@ const ProductModal: React.FC<{ onClose: () => void, onRefresh: () => void }> = (
         min_stock: parseInt(formData.min_stock),
         category: formData.category,
         image_url: formData.image_url
-      });
+      }, companyId);
       onRefresh();
       onClose();
     } catch (err: any) {

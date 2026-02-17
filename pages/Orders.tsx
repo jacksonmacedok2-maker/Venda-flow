@@ -5,17 +5,20 @@ import { formatCurrency, formatDate, formatTime } from '../utils/helpers';
 import { OrderStatus, OrderItem, Product, Client, Order } from '../types';
 import { db } from '../services/database';
 import { printService } from '../services/print';
+import { useAuth } from '../contexts/AuthContext';
 
 const Orders: React.FC = () => {
+  const { companyId } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const fetchOrders = async () => {
+    if (!companyId) return;
     try {
       setLoading(true);
-      const data = await db.orders.getAll();
+      const data = await db.orders.getAll(companyId);
       setOrders(data);
     } catch (err) {
       console.error("Erro:", err);
@@ -26,7 +29,7 @@ const Orders: React.FC = () => {
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+  }, [companyId]);
 
   const handlePrintOrder = async (order: any) => {
     const items = order.order_items || []; 
@@ -68,7 +71,6 @@ const Orders: React.FC = () => {
         <div className="py-20 text-center"><Loader2 className="animate-spin inline-block text-brand-600" /></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Mobile Card List (Default on small screens, hidden on large if preferred) */}
           {filteredOrders.map((order) => (
             <div key={order.id} className="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden group">
                <div className="flex items-start justify-between mb-4">
@@ -117,7 +119,7 @@ const Orders: React.FC = () => {
         </div>
       )}
 
-      {isModalOpen && <OrderModal onClose={() => setIsModalOpen(false)} onRefresh={fetchOrders} />}
+      {isModalOpen && companyId && <OrderModal companyId={companyId} onClose={() => setIsModalOpen(false)} onRefresh={fetchOrders} />}
     </div>
   );
 };
@@ -130,8 +132,7 @@ const getStatusStyle = (status: OrderStatus) => {
   }
 };
 
-// Fix: Added OrderModal component to satisfy the reference in the main Orders component
-const OrderModal: React.FC<{ onClose: () => void, onRefresh: () => void }> = ({ onClose, onRefresh }) => {
+const OrderModal: React.FC<{ companyId: string, onClose: () => void, onRefresh: () => void }> = ({ companyId, onClose, onRefresh }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
@@ -142,7 +143,7 @@ const OrderModal: React.FC<{ onClose: () => void, onRefresh: () => void }> = ({ 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [c, p] = await Promise.all([db.clients.getAll(), db.products.getAll()]);
+        const [c, p] = await Promise.all([db.clients.getAll(companyId), db.products.getAll(companyId)]);
         setClients(c);
         setProducts(p);
       } catch (err) {
@@ -150,7 +151,7 @@ const OrderModal: React.FC<{ onClose: () => void, onRefresh: () => void }> = ({ 
       }
     };
     loadData();
-  }, []);
+  }, [companyId]);
 
   const total = cart.reduce((sum, item) => sum + (item.product.price * item.qty), 0);
 
@@ -179,7 +180,7 @@ const OrderModal: React.FC<{ onClose: () => void, onRefresh: () => void }> = ({ 
         name: item.product.name 
       }));
 
-      await db.orders.create(order, items);
+      await db.orders.create(order, items, companyId);
       onRefresh();
       onClose();
     } catch (err: any) {

@@ -1,6 +1,6 @@
 
 import { supabase } from './supabase';
-import { Client, Order, Transaction, Product, OrderItem, CommercialSettings, CompanySettings, Invitation, InviteRole, OrderStatus } from '../types';
+import { Client, Order, Transaction, Product, OrderItem, CommercialSettings, CompanySettings, Invitation, InviteRole, OrderStatus, Membership } from '../types';
 
 const STORAGE_KEYS = {
   CLIENTS: 'nexero_cache_clients',
@@ -37,9 +37,10 @@ export const db = {
     const remainingQueue = [];
     for (const item of queue) {
       try {
-        if (item.type === 'CLIENT') await db.clients.create(item.payload, true);
-        if (item.type === 'PRODUCT') await db.products.create(item.payload, true);
-        if (item.type === 'ORDER') await db.orders.create(item.payload.order, item.payload.items);
+        // Fix: Corrected parameter passing for sync operations
+        if (item.type === 'CLIENT') await db.clients.create(item.payload, item.payload.company_id, true);
+        if (item.type === 'PRODUCT') await db.products.create(item.payload, item.payload.company_id, true);
+        if (item.type === 'ORDER') await db.orders.create(item.payload.order, item.payload.items, item.payload.order.company_id);
       } catch (err) {
         remainingQueue.push(item);
       }
@@ -48,30 +49,41 @@ export const db = {
   },
 
   team: {
-    async getActiveCompanyId(): Promise<string | null> {
+    async getMembership(): Promise<Membership | null> {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return null;
 
       const { data, error } = await supabase
         .from('memberships')
-        .select('company_id')
+        .select('*, companies(name)')
         .eq('user_id', session.user.id)
         .eq('status', 'ACTIVE')
         .order('created_at', { ascending: true })
         .limit(1)
         .maybeSingle();
 
-      // Prioriza o company_id do membership (UUID real), senão usa o ID do usuário (UUID real)
-      if (error || !data) {
-        return session.user.id;
+      if (error) {
+        console.error('Error fetching membership:', error);
+        return null;
       }
-      return data.company_id;
+      return data;
     },
 
-    async getInvitations(): Promise<Invitation[]> {
-      const companyId = await this.getActiveCompanyId();
-      if (!companyId) return [];
+    async createCompany(name: string): Promise<string> {
+      // Chama o RPC que cria empresa e membership atômicos
+      const { data, error } = await supabase.rpc('create_company_for_owner', { 
+        p_company_name: name 
+      });
 
+      if (error) {
+        console.error('RPC Error:', error);
+        throw new Error(error.message);
+      }
+      
+      return data; // Retorna o ID da empresa criada
+    },
+
+    async getInvitations(companyId: string): Promise<Invitation[]> {
       const { data, error } = await supabase
         .from('invitations')
         .select('*')
@@ -79,42 +91,43 @@ export const db = {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      localStore.set(STORAGE_KEYS.INVITATIONS, data);
       return data;
     },
 
-    async generateInvitation(email: string, role: InviteRole): Promise<Invitation> {
+    async generateInvitation(companyId: string, email: string, role: string): Promise<Invitation> {
       const { data: { session } } = await supabase.auth.getSession();
-      const companyId = await this.getActiveCompanyId();
-      
-      if (!session?.user || !companyId) throw new Error("Não autorizado ou sessão expirada.");
+      if (!session?.user) throw new Error("Não autorizado");
 
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
 
-      // CRITICAL: NÃO enviamos o 'token' ou 'id'. O banco gera via DEFAULT gen_random_uuid().
-      const invitePayload = {
-        company_id: companyId,
-        invited_email: email.trim().toLowerCase(),
-        role: role, // Agora o tipo InviteRole ('ADMIN' | 'SELLER' | 'VIEWER') já bate com a DB
-        status: 'PENDING',
-        expires_at: expiresAt.toISOString(),
-        created_by: session.user.id
-      };
+      // Mapeamento de cargo
+      let finalRole: InviteRole = 'SELLER';
+      const r = role.toUpperCase();
+      if (r.includes('ADMIN')) finalRole = 'ADMIN';
+      else if (r.includes('VIEW') || r.includes('VISUAL')) finalRole = 'VIEWER';
+      else finalRole = 'SELLER';
 
+      // NOTA: Token é UUID gerado no banco (default gen_random_uuid())
       const { data, error } = await supabase
         .from('invitations')
-        .insert(invitePayload)
+        .insert({
+          company_id: companyId,
+          invited_email: email.trim().toLowerCase(),
+          role: finalRole,
+          status: 'PENDING',
+          expires_at: expiresAt.toISOString(),
+          created_by: session.user.id
+        })
         .select()
         .single();
 
       if (error) {
-        console.error('Falha ao inserir convite no Supabase:', error);
+        console.error('Insert Invitation Error:', error);
         throw new Error(error.message);
       }
       
-      console.log('INVITE CREATED =>', data);
-      return data as Invitation;
+      return data;
     },
 
     async deleteInvitation(id: string) {
@@ -123,162 +136,24 @@ export const db = {
     }
   },
 
-  company: {
-    async getSettings(): Promise<CompanySettings | null> {
-      try {
-        if (navigator.onLine) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session?.user) return null;
-
-          const { data, error } = await supabase
-            .from('company_settings')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-
-          if (error) throw error;
-          
-          if (!data) {
-            const { data: newData, error: createError } = await supabase
-              .from('company_settings')
-              .insert([{ user_id: session.user.id }])
-              .select()
-              .single();
-            
-            if (createError) throw createError;
-            localStore.set(STORAGE_KEYS.COMPANY, newData);
-            return newData;
-          }
-
-          localStore.set(STORAGE_KEYS.COMPANY, data);
-          return data;
-        }
-      } catch (e) {
-        console.error("Erro ao buscar dados da empresa:", e);
-      }
-      return localStore.get(STORAGE_KEYS.COMPANY);
-    },
-
-    async updateSettings(settings: Partial<CompanySettings>): Promise<CompanySettings | null> {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) throw new Error("Não autenticado");
-
-      const { id, user_id, created_at, updated_at, ...cleanSettings } = settings as any;
-
-      if (navigator.onLine) {
-        const { data, error } = await supabase
-          .from('company_settings')
-          .upsert({ ...cleanSettings, user_id: session.user.id })
-          .select()
-          .single();
-
-        if (error) throw error;
-        localStore.set(STORAGE_KEYS.COMPANY, data);
-        return data;
-      } else {
-        const current = localStore.get(STORAGE_KEYS.COMPANY) || {};
-        const updated = { ...current, ...cleanSettings };
-        localStore.set(STORAGE_KEYS.COMPANY, updated);
-        return updated;
-      }
-    },
-
-    async uploadLogo(file: File): Promise<string> {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) throw new Error("Não autenticado");
-
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${session.user.id}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `logos/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('company-logos')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage
-        .from('company-logos')
-        .getPublicUrl(filePath);
-
-      return data.publicUrl;
-    }
-  },
-
-  commercial: {
-    async getSettings(): Promise<CommercialSettings | null> {
-      try {
-        if (navigator.onLine) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session?.user) return null;
-
-          const { data, error } = await supabase
-            .from('commercial_settings')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-
-          if (error) throw error;
-          
-          if (!data) {
-            const { data: newData, error: createError } = await supabase
-              .from('commercial_settings')
-              .insert([{ user_id: session.user.id }])
-              .select()
-              .single();
-            
-            if (createError) throw createError;
-            localStore.set(STORAGE_KEYS.COMMERCIAL, newData);
-            return newData;
-          }
-
-          localStore.set(STORAGE_KEYS.COMMERCIAL, data);
-          return data;
-        }
-      } catch (e) {
-        console.error("Erro ao buscar settings comerciais:", e);
-      }
-      return localStore.get(STORAGE_KEYS.COMMERCIAL);
-    },
-
-    async updateSettings(settings: Partial<CommercialSettings>): Promise<CommercialSettings | null> {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) throw new Error("Não autenticado");
-
-      const { id, user_id, created_at, updated_at, ...cleanSettings } = settings as any;
-
-      if (navigator.onLine) {
-        const { data, error } = await supabase
-          .from('commercial_settings')
-          .upsert({ ...cleanSettings, user_id: session.user.id })
-          .select()
-          .single();
-
-        if (error) throw error;
-        localStore.set(STORAGE_KEYS.COMMERCIAL, data);
-        return data;
-      } else {
-        const current = localStore.get(STORAGE_KEYS.COMMERCIAL) || {};
-        const updated = { ...current, ...cleanSettings };
-        localStore.set(STORAGE_KEYS.COMMERCIAL, updated);
-        return updated;
-      }
-    }
-  },
-
   clients: {
-    async getAll() {
+    async getAll(companyId?: string) {
+      if (!companyId) return [];
       try {
         if (navigator.onLine) {
-          const { data, error } = await supabase.from('clients').select('*').order('name', { ascending: true });
+          const { data, error } = await supabase
+            .from('clients')
+            .select('*')
+            .eq('company_id', companyId)
+            .order('name', { ascending: true });
           if (error) throw error;
           localStore.set(STORAGE_KEYS.CLIENTS, data);
           return data as Client[];
         }
       } catch (e) {}
-      return localStore.get(STORAGE_KEYS.CLIENTS) || [];
+      return (localStore.get(STORAGE_KEYS.CLIENTS) || []).filter((c: any) => c.company_id === companyId);
     },
-    async create(client: Partial<Client>, isSyncing = false) {
+    async create(client: Partial<Client>, companyId: string, isSyncing = false) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Usuário não autenticado");
 
@@ -290,7 +165,8 @@ export const db = {
         address: client.address,
         credit_limit: client.credit_limit || 0,
         type: client.type,
-        user_id: session.user.id
+        user_id: session.user.id,
+        company_id: companyId
       };
 
       if (!isSyncing) {
@@ -309,18 +185,23 @@ export const db = {
   },
 
   products: {
-    async getAll() {
+    async getAll(companyId?: string) {
+      if (!companyId) return [];
       try {
         if (navigator.onLine) {
-          const { data, error } = await supabase.from('products').select('*').order('name', { ascending: true });
+          const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('company_id', companyId)
+            .order('name', { ascending: true });
           if (error) throw error;
           localStore.set(STORAGE_KEYS.PRODUCTS, data);
           return data as Product[];
         }
       } catch (e) {}
-      return localStore.get(STORAGE_KEYS.PRODUCTS) || [];
+      return (localStore.get(STORAGE_KEYS.PRODUCTS) || []).filter((p: any) => p.company_id === companyId);
     },
-    async create(product: Partial<Product>, isSyncing = false) {
+    async create(product: Partial<Product>, companyId: string, isSyncing = false) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Usuário não autenticado");
 
@@ -332,7 +213,8 @@ export const db = {
         min_stock: product.min_stock,
         category: product.category,
         image_url: product.image_url,
-        user_id: session.user.id
+        user_id: session.user.id,
+        company_id: companyId
       };
 
       if (!isSyncing) {
@@ -351,48 +233,48 @@ export const db = {
   },
 
   orders: {
-    async getAll() {
+    async getAll(companyId?: string) {
+      if (!companyId) return [];
       try {
         if (navigator.onLine) {
           const { data, error } = await supabase
             .from('orders')
             .select('*, clients(name), order_items(*)')
+            .eq('company_id', companyId)
             .order('created_at', { ascending: false });
           if (error) throw error;
           localStore.set(STORAGE_KEYS.ORDERS, data);
           return data;
         }
       } catch (e) {}
-      return localStore.get(STORAGE_KEYS.ORDERS) || [];
+      return (localStore.get(STORAGE_KEYS.ORDERS) || []).filter((o: any) => o.company_id === companyId);
     },
 
-    async getNextCode(): Promise<string> {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return 'PED-000000';
-
+    async getNextCode(companyId: string): Promise<string> {
+      // Sequência baseada na empresa para evitar colisão entre tenants
       const { data, error } = await supabase
         .from('order_sequences')
         .select('current_value')
-        .eq('user_id', session.user.id)
-        .single();
+        .eq('company_id', companyId)
+        .maybeSingle();
 
       let nextVal = 1;
-      if (error && error.code === 'PGRST116') {
-        await supabase.from('order_sequences').insert({ user_id: session.user.id, current_value: 1 });
-      } else if (data) {
+      if (!data) {
+        await supabase.from('order_sequences').insert({ company_id: companyId, current_value: 1 });
+      } else {
         nextVal = data.current_value + 1;
-        await supabase.from('order_sequences').update({ current_value: nextVal }).eq('user_id', session.user.id);
+        await supabase.from('order_sequences').update({ current_value: nextVal }).eq('company_id', companyId);
       }
 
       return `PED-${nextVal.toString().padStart(6, '0')}`;
     },
 
-    async create(order: Partial<Order>, items: OrderItem[]) {
+    async create(order: Partial<Order>, items: OrderItem[], companyId: string) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Não autenticado");
 
       if (navigator.onLine) {
-        const code = await this.getNextCode();
+        const code = await this.getNextCode(companyId);
 
         const { data: orderData, error: orderError } = await supabase
           .from('orders')
@@ -406,7 +288,8 @@ export const db = {
             payment_method: order.payment_method,
             notes: order.notes,
             code,
-            user_id: session.user.id 
+            user_id: session.user.id,
+            company_id: companyId
           }])
           .select()
           .single();
@@ -426,6 +309,7 @@ export const db = {
         const { error: itemsError } = await supabase.from('order_items').insert(itemsToInsert);
         if (itemsError) throw itemsError;
 
+        // Baixa de estoque apenas se concluído
         if (order.status === OrderStatus.COMPLETED) {
           for (const item of items) {
             const { data: prod } = await supabase.from('products').select('stock').eq('id', item.product_id).single();
@@ -437,46 +321,141 @@ export const db = {
 
         return orderData;
       } else {
-        localStore.addToQueue('ORDER', { order, items });
+        localStore.addToQueue('ORDER', { order: { ...order, company_id: companyId }, items });
         return { id: 'offline_temp', ...order };
       }
     }
   },
 
   finance: {
-    async getTransactions() {
+    async getTransactions(companyId?: string) {
+      if (!companyId) return [];
       try {
         if (navigator.onLine) {
-          const { data, error } = await supabase.from('transactions').select('*').order('date', { ascending: false });
+          const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('company_id', companyId)
+            .order('date', { ascending: false });
           if (error) throw error;
           localStore.set(STORAGE_KEYS.FINANCE, data);
           return data as Transaction[];
         }
       } catch (e) {}
-      return localStore.get(STORAGE_KEYS.FINANCE) || [];
+      return (localStore.get(STORAGE_KEYS.FINANCE) || []).filter((t: any) => t.company_id === companyId);
     },
-    async createTransaction(transaction: Partial<Transaction>) {
+    async createTransaction(transaction: Partial<Transaction>, companyId: string) {
       if (navigator.onLine) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.user) throw new Error("Não autenticado");
-        const { data, error } = await supabase.from('transactions').insert([{ ...transaction, user_id: session.user.id, date: new Date().toISOString() }]).select();
+        const { data, error } = await supabase
+          .from('transactions')
+          .insert([{ 
+            ...transaction, 
+            user_id: session.user.id, 
+            company_id: companyId,
+            date: new Date().toISOString() 
+          }])
+          .select();
         if (error) throw error;
         return data[0];
       }
     }
   },
 
-  async getDashboardStats() {
+  // Fix: Added missing commercial and company settings methods
+  commercial: {
+    async getSettings() {
+      const membership = await db.team.getMembership();
+      if (!membership) return null;
+      const { data, error } = await supabase
+        .from('commercial_settings')
+        .select('*')
+        .eq('company_id', membership.company_id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    async updateSettings(settings: CommercialSettings) {
+      const { data, error } = await supabase
+        .from('commercial_settings')
+        .upsert(settings)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  company: {
+    async getSettings() {
+      const membership = await db.team.getMembership();
+      if (!membership) return null;
+      const { data, error } = await supabase
+        .from('company_settings')
+        .select('*')
+        .eq('company_id', membership.company_id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    async updateSettings(settings: CompanySettings) {
+      const { data, error } = await supabase
+        .from('company_settings')
+        .upsert(settings)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    async uploadLogo(file: File) {
+      const membership = await db.team.getMembership();
+      if (!membership) throw new Error("No membership found");
+      
+      const fileExt = file.name.split('.').pop();
+      const filePath = `logos/${membership.company_id}/logo-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('company-assets')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('company-assets')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    }
+  },
+
+  async getDashboardStats(companyId: string) {
+    if (!companyId) return { dailySales: 0, outOfStockItems: 0, pendingOrders: 0, monthlyRevenue: 0 };
     try {
       if (navigator.onLine) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) return { dailySales: 0, outOfStockItems: 0, pendingOrders: 0, monthlyRevenue: 0 };
         const today = new Date();
         today.setHours(0,0,0,0);
         const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        const { data: ordersToday } = await supabase.from('orders').select('total_amount').gte('created_at', today.toISOString()).eq('status', OrderStatus.COMPLETED);
-        const { data: ordersMonth } = await supabase.from('orders').select('total_amount').gte('created_at', firstDayOfMonth.toISOString()).eq('status', OrderStatus.COMPLETED);
-        const { data: productsStock } = await supabase.from('products').select('stock');
+        
+        const { data: ordersToday } = await supabase
+          .from('orders')
+          .select('total_amount')
+          .eq('company_id', companyId)
+          .gte('created_at', today.toISOString())
+          .eq('status', OrderStatus.COMPLETED);
+          
+        const { data: ordersMonth } = await supabase
+          .from('orders')
+          .select('total_amount')
+          .eq('company_id', companyId)
+          .gte('created_at', firstDayOfMonth.toISOString())
+          .eq('status', OrderStatus.COMPLETED);
+          
+        const { data: productsStock } = await supabase
+          .from('products')
+          .select('stock')
+          .eq('company_id', companyId);
+          
         return {
           dailySales: ordersToday?.reduce((acc, curr) => acc + Number(curr.total_amount), 0) || 0,
           monthlyRevenue: ordersMonth?.reduce((acc, curr) => acc + Number(curr.total_amount), 0) || 0,

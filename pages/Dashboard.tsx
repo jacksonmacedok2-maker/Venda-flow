@@ -7,7 +7,7 @@ import { db } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, companyId } = useAuth();
   const [stats, setStats] = useState({
     dailySales: 0,
     monthlyRevenue: 0,
@@ -20,17 +20,18 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!companyId) return;
+    
     const loadData = async () => {
       try {
-        const dashboardStats = await db.getDashboardStats();
-        const clients = await db.clients.getAll();
-        const orders = await db.orders.getAll();
+        const dashboardStats = await db.getDashboardStats(companyId);
+        const clients = await db.clients.getAll(companyId);
+        const orders = await db.orders.getAll(companyId);
         
-        // Pegar as 5 vendas mais recentes
         const latestOrders = orders ? orders.slice(0, 5) : [];
         setRecentOrders(latestOrders);
 
-        const avgTicket = dashboardStats.dailySales > 0 ? dashboardStats.dailySales / 1 : 0;
+        const avgTicket = dashboardStats.dailySales > 0 ? dashboardStats.dailySales / orders.length : 0;
 
         setStats(prev => ({ 
           ...prev, 
@@ -45,7 +46,7 @@ const Dashboard: React.FC = () => {
       }
     };
     loadData();
-  }, []);
+  }, [companyId]);
 
   if (loading) {
     return (
@@ -60,7 +61,6 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      {/* Header Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Painel de Controle</h2>
@@ -76,7 +76,6 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Primary KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard 
           label="Vendas Hoje" 
@@ -108,7 +107,6 @@ const Dashboard: React.FC = () => {
         />
       </div>
 
-      {/* Main Insights and Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between mb-6">
@@ -190,7 +188,6 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Recent Orders List - DADOS REAIS */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Últimas Vendas Realizadas</h3>
@@ -209,7 +206,7 @@ const Dashboard: React.FC = () => {
               {recentOrders.length > 0 ? (
                 recentOrders.map((order) => (
                   <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors">
-                    <td className="px-6 py-4 text-xs font-bold text-indigo-600">#{order.id.substring(0,8).toUpperCase()}</td>
+                    <td className="px-6 py-4 text-xs font-bold text-indigo-600">#{order.code || order.id.substring(0,8).toUpperCase()}</td>
                     <td className="px-6 py-4 text-xs font-semibold text-slate-700 dark:text-slate-300">{order.clients?.name || 'Cliente Avulso'}</td>
                     <td className="px-6 py-4 text-[10px] text-slate-500">{formatDate(order.created_at)}</td>
                     <td className="px-6 py-4 text-right text-xs font-bold text-slate-900 dark:text-white">{formatCurrency(order.total_amount)}</td>

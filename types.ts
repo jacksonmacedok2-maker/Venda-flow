@@ -17,6 +17,18 @@ export type Permission = 'FINANCE' | 'INVENTORY' | 'PRODUCTS' | 'ORDERS' | 'POS'
 
 export type InviteRole = 'ADMIN' | 'SELLER' | 'VIEWER';
 
+export interface Membership {
+  id: string;
+  company_id: string;
+  user_id: string;
+  role: 'OWNER' | 'ADMIN' | 'SELLER' | 'VIEWER';
+  status: 'ACTIVE' | 'INACTIVE';
+  created_at: string;
+  companies?: {
+    name: string;
+  };
+}
+
 export interface Invitation {
   id: string;
   company_id: string;
@@ -42,6 +54,7 @@ export interface User {
 export interface Client {
   id: string;
   user_id?: string;
+  company_id?: string;
   name: string;
   cnpj_cpf: string;
   email: string;
@@ -56,6 +69,7 @@ export interface Client {
 export interface Product {
   id: string;
   user_id?: string;
+  company_id?: string;
   name: string;
   sku: string;
   price: number;
@@ -81,6 +95,7 @@ export interface Order {
   id: string;
   code: string;
   user_id?: string;
+  company_id?: string;
   client_id: string | null;
   total_amount: number;
   discount_total: number;
@@ -97,6 +112,7 @@ export interface Order {
 export interface Transaction {
   id: string;
   user_id?: string;
+  company_id?: string;
   description: string;
   amount: number;
   type: 'INCOME' | 'EXPENSE';
@@ -108,6 +124,7 @@ export interface Transaction {
 export interface CommercialSettings {
   id?: string;
   user_id?: string;
+  company_id?: string;
   minimum_order_value: number;
   auto_approve_orders: boolean;
   allow_negative_stock: boolean;
@@ -132,6 +149,7 @@ export interface CommercialSettings {
 export interface CompanySettings {
   id?: string;
   user_id?: string;
+  company_id?: string;
   trade_name: string;
   legal_name: string;
   document: string;

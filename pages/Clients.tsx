@@ -4,17 +4,20 @@ import { Plus, Search, Filter, MoreHorizontal, UserRound, Mail, Phone, MapPin, L
 import { formatCurrency, generateId, fetchCnpjData, isValidCpf } from '../utils/helpers';
 import { Client as ClientType } from '../types';
 import { db } from '../services/database';
+import { useAuth } from '../contexts/AuthContext';
 
 const Clients: React.FC = () => {
+  const { companyId } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchClients = async () => {
+    if (!companyId) return;
     try {
       setLoading(true);
-      const data = await db.clients.getAll();
+      const data = await db.clients.getAll(companyId);
       setClients(data);
     } catch (err) {
       console.error("Erro ao carregar clientes:", err);
@@ -25,7 +28,7 @@ const Clients: React.FC = () => {
 
   useEffect(() => {
     fetchClients();
-  }, []);
+  }, [companyId]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -121,12 +124,12 @@ const Clients: React.FC = () => {
         </div>
       </div>
 
-      {isModalOpen && <ClientModal onClose={() => setIsModalOpen(false)} onRefresh={fetchClients} />}
+      {isModalOpen && companyId && <ClientModal companyId={companyId} onClose={() => setIsModalOpen(false)} onRefresh={fetchClients} />}
     </div>
   );
 };
 
-const ClientModal: React.FC<{ onClose: () => void, onRefresh: () => void }> = ({ onClose, onRefresh }) => {
+const ClientModal: React.FC<{ companyId: string, onClose: () => void, onRefresh: () => void }> = ({ companyId, onClose, onRefresh }) => {
   const [docType, setDocType] = useState<'PF' | 'PJ'>('PJ');
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -180,6 +183,7 @@ const ClientModal: React.FC<{ onClose: () => void, onRefresh: () => void }> = ({
     setError('');
 
     try {
+      // Fix: Passed companyId as the second argument
       await db.clients.create({
         name: formData.name,
         cnpj_cpf: formData.cnpj_cpf,
@@ -189,11 +193,10 @@ const ClientModal: React.FC<{ onClose: () => void, onRefresh: () => void }> = ({
         type: docType,
         credit_limit: parseFloat(formData.credit_limit) || 0,
         total_spent: 0
-      });
+      }, companyId);
       onRefresh();
       onClose();
     } catch (err: any) {
-      // Exibindo o erro real para o usuário
       setError(err.message || 'Falha na conexão com o banco de dados.');
     } finally {
       setIsSaving(false);

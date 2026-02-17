@@ -1,23 +1,28 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, UserRole, Permission } from '../types';
+import { User, UserRole, Permission, Membership } from '../types';
 import { supabase } from '../services/supabase';
+import { db } from '../services/database';
 
 interface AuthContextType {
   user: User | null;
+  companyId: string | null;
+  companyName: string | null;
+  membershipRole: string | null;
   login: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, metadata: any) => Promise<boolean>;
   resendConfirmation: (email: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => void;
   refreshSession: () => Promise<void>;
+  refreshMembership: () => Promise<void>;
   isAuthenticated: boolean;
+  loadingCompany: boolean;
   hasPermission: (permission: Permission) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Lista mestra de permissões para administradores
 const ADMIN_PERMISSIONS: Permission[] = [
   'FINANCE', 'INVENTORY', 'PRODUCTS', 'ORDERS', 'POS', 
   'SETTINGS', 'REPORTS', 'CLIENTS', 'TEAM'
@@ -25,41 +30,64 @@ const ADMIN_PERMISSIONS: Permission[] = [
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string | null>(null);
+  const [membershipRole, setMembershipRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingCompany, setLoadingCompany] = useState(false);
 
   useEffect(() => {
-    const queryParams = new URLSearchParams(window.location.search);
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const hasAuthParams = queryParams.has('code') || hashParams.has('access_token');
-
     const initAuth = async () => {
-      if (!hasAuthParams) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          updateUserState(session.user);
-        }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        updateUserState(session.user);
+        await ensureCompany();
       }
       setLoading(false);
     };
 
     initAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user && !window.location.search.includes('code=')) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
         updateUserState(session.user);
+        if (event === 'SIGNED_IN') {
+          await ensureCompany();
+        }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
+        setCompanyId(null);
+        setCompanyName(null);
+        setMembershipRole(null);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
+  const ensureCompany = async () => {
+    setLoadingCompany(true);
+    try {
+      const membership = await db.team.getMembership();
+      if (membership) {
+        setCompanyId(membership.company_id);
+        setMembershipRole(membership.role);
+        setCompanyName(membership.companies?.name || 'Minha Empresa');
+      } else {
+        setCompanyId(null);
+      }
+    } catch (err) {
+      console.error('Error ensuring company:', err);
+    } finally {
+      setLoadingCompany(false);
+    }
+  };
+
   const updateUserState = (supabaseUser: any) => {
     const metadata = supabaseUser.user_metadata || {};
     setUser({
       id: supabaseUser.id,
-      name: metadata.companyName || metadata.name || supabaseUser.email?.split('@')[0],
+      name: metadata.name || supabaseUser.email?.split('@')[0],
       email: supabaseUser.email || '',
       role: (metadata.role as UserRole) || UserRole.ADMIN,
       active: true,
@@ -74,7 +102,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUp = async (email: string, password: string, metadata: any): Promise<boolean> => {
     const redirectUrl = window.location.origin + '/';
-    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -89,12 +116,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     if (error) throw error;
-    
-    if (data.session) {
-      await supabase.auth.signOut();
-      return true; 
-    }
-    
     return !!(data.user && !data.session);
   };
 
@@ -120,13 +141,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setCompanyId(null);
     localStorage.clear();
   };
 
   const hasPermission = (permission: Permission): boolean => {
     if (!user) return false;
-    // Se for ADMIN, por segurança damos acesso a tudo se a lista estiver vazia ou se incluir o item
-    if (user.role === UserRole.ADMIN) return true;
+    // Admins ou Owners da empresa tem acesso total por padrão na lógica multi-tenant
+    if (membershipRole === 'OWNER' || membershipRole === 'ADMIN') return true;
     return user.permissions.includes(permission);
   };
 
@@ -134,6 +156,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data, error } = await supabase.auth.refreshSession();
     if (error) throw error;
     if (data.user) updateUserState(data.user);
+  };
+
+  const refreshMembership = async () => {
+    await ensureCompany();
   };
 
   if (loading) {
@@ -150,13 +176,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{ 
       user, 
+      companyId,
+      companyName,
+      membershipRole,
       login, 
       signUp, 
       resendConfirmation,
       resetPassword,
       logout, 
       refreshSession,
+      refreshMembership,
       isAuthenticated: !!user, 
+      loadingCompany,
       hasPermission
     }}>
       {children}

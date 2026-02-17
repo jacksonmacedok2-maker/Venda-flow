@@ -5,8 +5,10 @@ import { formatCurrency } from '../utils/helpers';
 import { db } from '../services/database';
 import { printService } from '../services/print';
 import { Product, Order, OrderStatus } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 const POS: React.FC = () => {
+  const { companyId } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<{product: Product, qty: number}[]>([]);
   const [search, setSearch] = useState('');
@@ -17,8 +19,9 @@ const POS: React.FC = () => {
 
   useEffect(() => {
     const fetchProds = async () => {
+      if (!companyId) return;
       try {
-        const data = await db.products.getAll();
+        const data = await db.products.getAll(companyId);
         setProducts(data);
       } catch (err) {
         console.error(err);
@@ -27,7 +30,7 @@ const POS: React.FC = () => {
       }
     };
     fetchProds();
-  }, []);
+  }, [companyId]);
 
   const addToCart = (product: Product) => {
     if (product.stock <= 0) return alert('Produto sem estoque!');
@@ -44,7 +47,7 @@ const POS: React.FC = () => {
   const total = cart.reduce((sum, item) => sum + (item.product.price * item.qty), 0);
 
   const handleFinishSale = async (method: string) => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || !companyId) return;
     setIsFinishing(true);
     try {
       const order: Partial<Order> = {
@@ -64,7 +67,8 @@ const POS: React.FC = () => {
         name: item.product.name 
       }));
 
-      const savedOrder = await db.orders.create(order, items);
+      // Fix: Passed companyId as the third argument
+      const savedOrder = await db.orders.create(order, items, companyId);
       setLastSale({ order: { ...order, id: savedOrder?.id || 'NO-ID' }, items });
       setCart([]);
       setIsCartOpen(false);
@@ -93,7 +97,6 @@ const POS: React.FC = () => {
               placeholder="Buscar..." 
               className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border-none rounded-xl focus:ring-2 focus:ring-brand-500/20 text-xs"
               value={search}
-              // Fix: Corrected the function name from setSearchTerm to setSearch to match state definition
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>

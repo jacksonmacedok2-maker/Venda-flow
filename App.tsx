@@ -16,13 +16,13 @@ import Invite from './pages/Invite';
 import AuthCallback from './pages/AuthCallback';
 import AuthConfirmed from './pages/AuthConfirmed';
 import AuthError from './pages/AuthError';
+import CreateCompanyModal from './components/CreateCompanyModal';
 import { AppSettingsProvider } from './contexts/AppSettingsContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { db } from './services/database';
 import { Loader2, ShieldCheck } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  // Roteamento baseado em chaves internas para máxima compatibilidade
   const [activeKey, setActiveKey] = useState<string>(() => {
     const hash = window.location.hash.replace('#', '');
     return hash || 'dashboard';
@@ -30,9 +30,8 @@ const AppContent: React.FC = () => {
   
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
-  const { isAuthenticated, logout, hasPermission } = useAuth();
+  const { isAuthenticated, logout, hasPermission, companyId, loadingCompany, refreshMembership } = useAuth();
 
-  // Sincroniza a chave ativa com o hash da URL para permitir "F5"
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '');
@@ -70,15 +69,12 @@ const AppContent: React.FC = () => {
   }, []);
 
   const renderContent = () => {
-    // Tratamento de páginas de autenticação (URL baseada em Path ainda para Callbacks do Supabase)
     const path = window.location.pathname;
     const queryParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     
-    // Rota Especial de Convite (Funciona mesmo deslogado para mostrar card de login)
     if (path.includes('/auth/invite')) return <Invite setActiveTab={navigateTo} />;
     
-    // Callbacks e Erros Globais
     if (queryParams.has('error') || hashParams.has('error')) return <AuthError setActiveTab={() => navigateTo('dashboard')} />;
     if (queryParams.has('code') || hashParams.has('access_token')) return <AuthCallback setActiveTab={() => navigateTo('dashboard')} />;
     if (path.includes('/auth/confirmed')) return <AuthConfirmed setActiveTab={() => navigateTo('dashboard')} />;
@@ -87,7 +83,23 @@ const AppContent: React.FC = () => {
       return <Login />;
     }
 
-    // Switch baseado na CHAVE de estado
+    // Se estiver carregando dados da empresa, mostra loader
+    if (loadingCompany) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="animate-spin text-brand-600" size={32} />
+            <p className="text-[10px] font-black uppercase tracking-widest animate-pulse">Sincronizando Empresa...</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Se estiver logado mas NÃO tiver empresa, obriga a criar
+    if (!companyId) {
+      return <CreateCompanyModal onSuccess={refreshMembership} />;
+    }
+
     switch (activeKey) {
       case 'dashboard':
         return <Dashboard />;
@@ -114,7 +126,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Verifica se estamos em uma página que NÃO deve exibir o Layout (Login, Invite, Callbacks)
   const isPlainPage = !isAuthenticated || window.location.pathname.includes('/auth/');
 
   if (isPlainPage) {

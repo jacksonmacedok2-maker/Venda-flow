@@ -4,28 +4,31 @@ import { Users2, UserPlus, Mail, Shield, CheckCircle2, Copy, Trash2, Clock, Load
 import { db } from '../services/database';
 import { Invitation, InviteRole } from '../types';
 import { formatDate } from '../utils/helpers';
+import { useAuth } from '../contexts/AuthContext';
 
-const ROLE_LABELS: Record<InviteRole, string> = {
+const ROLE_LABELS: Record<string, string> = {
   'ADMIN': 'ADMINISTRADOR',
   'SELLER': 'VENDEDOR',
   'VIEWER': 'VISUALIZADOR'
 };
 
 const Team: React.FC = () => {
+  const { companyId } = useAuth();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<InviteRole>('SELLER');
+  const [role, setRole] = useState<string>('SELLER');
   const [error, setError] = useState('');
   const [generatedLink, setGeneratedLink] = useState('');
   const [copied, setCopied] = useState(false);
 
   const fetchInvitations = async () => {
+    if (!companyId) return;
     try {
       setLoading(true);
-      const data = await db.team.getInvitations();
+      const data = await db.team.getInvitations(companyId);
       setInvitations(data);
     } catch (err) {
       console.error(err);
@@ -36,23 +39,24 @@ const Team: React.FC = () => {
 
   useEffect(() => {
     fetchInvitations();
-  }, []);
+  }, [companyId]);
 
   const handleGenerateInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return setError('O e-mail é obrigatório.');
+    if (!companyId) return setError('Identificação da empresa não encontrada.');
     
     setIsGenerating(true);
     setError('');
     try {
-      const invite = await db.team.generateInvitation(email, role);
+      const invite = await db.team.generateInvitation(companyId, email, role);
+      // Link gerado usando o token retornado pelo banco
       const link = `${window.location.origin}/auth/invite?token=${invite.token}`;
       setGeneratedLink(link);
       fetchInvitations();
-      console.log('INVITE CREATED =>', invite);
     } catch (err: any) {
       console.error('Falha ao gerar convite:', err);
-      setError(err.message || 'Erro inesperado ao gerar convite. Verifique as configurações de banco.');
+      setError(err.message || 'Erro inesperado ao gerar convite.');
     } finally {
       setIsGenerating(false);
     }
@@ -91,7 +95,6 @@ const Team: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Lado Esquerdo: Convites Ativos */}
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
@@ -155,7 +158,6 @@ const Team: React.FC = () => {
           </div>
         </div>
 
-        {/* Lado Direito: Resumo de Permissões */}
         <div className="space-y-6">
            <div className="bg-brand-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-brand-600/20 relative overflow-hidden group">
               <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
@@ -189,7 +191,6 @@ const Team: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal de Convite */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
@@ -232,7 +233,7 @@ const Team: React.FC = () => {
                     <div className="space-y-2">
                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Cargo / Permissão</label>
                        <div className="grid grid-cols-3 gap-2">
-                          {(['ADMIN', 'SELLER', 'VIEWER'] as InviteRole[]).map(r => (
+                          {['ADMIN', 'SELLER', 'VIEWER'].map(r => (
                             <button
                               key={r}
                               type="button"
