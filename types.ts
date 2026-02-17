@@ -90,3 +90,50 @@ export interface Transaction {
   status: 'PAID' | 'PENDING';
   date: string;
 }
+
+export interface CommercialSettings {
+  id?: string;
+  user_id?: string;
+  minimum_order_value: number;
+  auto_approve_orders: boolean;
+  allow_negative_stock: boolean;
+  low_stock_threshold: number;
+  max_discount_percent: number;
+  allow_discount_override: boolean;
+  default_payment_method: string;
+  allowed_payment_methods: string[];
+  default_price_table: string;
+  enable_multiple_price_tables: boolean;
+  enable_credit_limit: boolean;
+  default_credit_limit: number;
+  order_code_prefix: string;
+  order_code_padding: number;
+  enable_freight: boolean;
+  freight_mode: 'EMBUTIDO' | 'SEPARADO';
+  default_freight_value: number;
+  enable_sales_goals: boolean;
+  monthly_goal: number;
+}
+
+export interface CompanySettings {
+  id?: string;
+  user_id?: string;
+  trade_name: string;
+  legal_name: string;
+  document: string;
+  state_registration: string;
+  phone: string;
+  email: string;
+  whatsapp: string;
+  cep: string;
+  street: string;
+  number: string;
+  district: string;
+  city: string;
+  state: string;
+  country: string;
+  currency: string;
+  timezone: string;
+  notes: string;
+  logo_url: string;
+}

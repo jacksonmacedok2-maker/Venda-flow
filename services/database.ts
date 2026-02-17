@@ -1,25 +1,27 @@
 
 import { supabase } from './supabase';
-import { Client, Order, Transaction, Product, OrderItem } from '../types';
+import { Client, Order, Transaction, Product, OrderItem, CommercialSettings, CompanySettings } from '../types';
 
 const STORAGE_KEYS = {
   CLIENTS: 'nexero_cache_clients',
   PRODUCTS: 'nexero_cache_products',
   ORDERS: 'nexero_cache_orders',
   FINANCE: 'nexero_cache_finance',
+  COMMERCIAL: 'nexero_cache_commercial',
+  COMPANY: 'nexero_cache_company',
   SYNC_QUEUE: 'nexero_sync_queue'
 };
 
 const localStore = {
   get: (key: string) => {
     const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
+    return data ? JSON.parse(data) : null;
   },
   set: (key: string, data: any) => {
     localStorage.setItem(key, JSON.stringify(data));
   },
   addToQueue: (type: string, payload: any) => {
-    const queue = localStore.get(STORAGE_KEYS.SYNC_QUEUE);
+    const queue = localStore.get(STORAGE_KEYS.SYNC_QUEUE) || [];
     queue.push({ id: Math.random().toString(36).substr(2, 9), type, payload, timestamp: Date.now() });
     localStore.set(STORAGE_KEYS.SYNC_QUEUE, queue);
   }
@@ -28,7 +30,7 @@ const localStore = {
 export const db = {
   async syncPendingData() {
     if (!navigator.onLine) return;
-    const queue = localStore.get(STORAGE_KEYS.SYNC_QUEUE);
+    const queue = localStore.get(STORAGE_KEYS.SYNC_QUEUE) || [];
     if (queue.length === 0) return;
 
     const remainingQueue = [];
@@ -44,6 +46,160 @@ export const db = {
     localStore.set(STORAGE_KEYS.SYNC_QUEUE, remainingQueue);
   },
 
+  company: {
+    async getSettings(): Promise<CompanySettings | null> {
+      try {
+        if (navigator.onLine) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session?.user) return null;
+
+          const { data, error } = await supabase
+            .from('company_settings')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+
+          if (error) throw error;
+          
+          if (!data) {
+            const { data: newData, error: createError } = await supabase
+              .from('company_settings')
+              .insert([{ user_id: session.user.id }])
+              .select()
+              .single();
+            
+            if (createError) throw createError;
+            localStore.set(STORAGE_KEYS.COMPANY, newData);
+            return newData;
+          }
+
+          localStore.set(STORAGE_KEYS.COMPANY, data);
+          return data;
+        }
+      } catch (e) {
+        console.error("Erro ao buscar dados da empresa:", e);
+      }
+      return localStore.get(STORAGE_KEYS.COMPANY);
+    },
+
+    async updateSettings(settings: Partial<CompanySettings>): Promise<CompanySettings | null> {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error("Não autenticado");
+
+      const { id, user_id, created_at, updated_at, ...cleanSettings } = settings as any;
+
+      if (navigator.onLine) {
+        const { data, error } = await supabase
+          .from('company_settings')
+          .upsert({ ...cleanSettings, user_id: session.user.id })
+          .select()
+          .single();
+
+        if (error) throw error;
+        localStore.set(STORAGE_KEYS.COMPANY, data);
+        return data;
+      } else {
+        const current = localStore.get(STORAGE_KEYS.COMPANY) || {};
+        const updated = { ...current, ...cleanSettings };
+        localStore.set(STORAGE_KEYS.COMPANY, updated);
+        return updated;
+      }
+    },
+
+    async uploadLogo(file: File): Promise<string> {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error("Não autenticado");
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${session.user.id}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `logos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('company-logos')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('company-logos')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    },
+
+    async removeLogo(url: string) {
+      try {
+        const path = url.split('company-logos/').pop();
+        if (path) {
+          await supabase.storage.from('company-logos').remove([path]);
+        }
+      } catch (e) {
+        console.error("Erro ao remover logo antiga:", e);
+      }
+    }
+  },
+
+  commercial: {
+    async getSettings(): Promise<CommercialSettings | null> {
+      try {
+        if (navigator.onLine) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session?.user) return null;
+
+          const { data, error } = await supabase
+            .from('commercial_settings')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+
+          if (error) throw error;
+          
+          if (!data) {
+            const { data: newData, error: createError } = await supabase
+              .from('commercial_settings')
+              .insert([{ user_id: session.user.id }])
+              .select()
+              .single();
+            
+            if (createError) throw createError;
+            localStore.set(STORAGE_KEYS.COMMERCIAL, newData);
+            return newData;
+          }
+
+          localStore.set(STORAGE_KEYS.COMMERCIAL, data);
+          return data;
+        }
+      } catch (e) {
+        console.error("Erro ao buscar settings comerciais:", e);
+      }
+      return localStore.get(STORAGE_KEYS.COMMERCIAL);
+    },
+
+    async updateSettings(settings: Partial<CommercialSettings>): Promise<CommercialSettings | null> {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error("Não autenticado");
+
+      const { id, user_id, created_at, updated_at, ...cleanSettings } = settings as any;
+
+      if (navigator.onLine) {
+        const { data, error } = await supabase
+          .from('commercial_settings')
+          .upsert({ ...cleanSettings, user_id: session.user.id })
+          .select()
+          .single();
+
+        if (error) throw error;
+        localStore.set(STORAGE_KEYS.COMMERCIAL, data);
+        return data;
+      } else {
+        const current = localStore.get(STORAGE_KEYS.COMMERCIAL) || {};
+        const updated = { ...current, ...cleanSettings };
+        localStore.set(STORAGE_KEYS.COMMERCIAL, updated);
+        return updated;
+      }
+    }
+  },
+
   clients: {
     async getAll() {
       try {
@@ -54,13 +210,12 @@ export const db = {
           return data as Client[];
         }
       } catch (e) {}
-      return localStore.get(STORAGE_KEYS.CLIENTS);
+      return localStore.get(STORAGE_KEYS.CLIENTS) || [];
     },
     async create(client: Partial<Client>, isSyncing = false) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Usuário não autenticado");
 
-      // Limpeza profunda do objeto para não enviar lixo ao Supabase
       const insertData = {
         name: client.name,
         cnpj_cpf: client.cnpj_cpf,
@@ -73,7 +228,7 @@ export const db = {
       };
 
       if (!isSyncing) {
-        const current = localStore.get(STORAGE_KEYS.CLIENTS);
+        const current = localStore.get(STORAGE_KEYS.CLIENTS) || [];
         localStore.set(STORAGE_KEYS.CLIENTS, [...current, { ...insertData, id: 'temp_' + Date.now() }]);
       }
 
@@ -97,13 +252,12 @@ export const db = {
           return data as Product[];
         }
       } catch (e) {}
-      return localStore.get(STORAGE_KEYS.PRODUCTS);
+      return localStore.get(STORAGE_KEYS.PRODUCTS) || [];
     },
     async create(product: Partial<Product>, isSyncing = false) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Usuário não autenticado");
 
-      // Mapeamento explícito para garantir que NENHUM campo ID ou USER_ID antigo seja enviado
       const insertData = {
         name: product.name,
         sku: product.sku,
@@ -116,16 +270,13 @@ export const db = {
       };
 
       if (!isSyncing) {
-        const current = localStore.get(STORAGE_KEYS.PRODUCTS);
+        const current = localStore.get(STORAGE_KEYS.PRODUCTS) || [];
         localStore.set(STORAGE_KEYS.PRODUCTS, [...current, { ...insertData, id: 'temp_' + Date.now() }]);
       }
 
       if (navigator.onLine) {
         const { data, error } = await supabase.from('products').insert([insertData]).select();
-        if (error) {
-          console.error("Erro RLS Detalhado:", error);
-          throw error;
-        }
+        if (error) throw error;
         return data[0];
       } else if (!isSyncing) {
         localStore.addToQueue('PRODUCT', insertData);
@@ -146,7 +297,7 @@ export const db = {
           return data;
         }
       } catch (e) {}
-      return localStore.get(STORAGE_KEYS.ORDERS);
+      return localStore.get(STORAGE_KEYS.ORDERS) || [];
     },
 
     async getNextCode(): Promise<string> {
@@ -243,7 +394,7 @@ export const db = {
           return data as Transaction[];
         }
       } catch (e) {}
-      return localStore.get(STORAGE_KEYS.FINANCE);
+      return localStore.get(STORAGE_KEYS.FINANCE) || [];
     },
     async createTransaction(transaction: Partial<Transaction>) {
       if (navigator.onLine) {

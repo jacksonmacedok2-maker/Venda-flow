@@ -9,6 +9,7 @@ import Finance from './pages/Finance';
 import POS from './pages/POS';
 import Settings from './pages/Settings';
 import Clients from './pages/Clients';
+import Reports from './pages/Reports';
 import Login from './pages/Login';
 import { AppSettingsProvider } from './contexts/AppSettingsContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -64,6 +65,8 @@ const AppContent: React.FC = () => {
         return hasPermission('INVENTORY') ? <Inventory /> : <AccessDenied />;
       case '/finance':
         return hasPermission('FINANCE') ? <Finance /> : <AccessDenied />;
+      case '/reports':
+        return hasPermission('REPORTS') ? <Reports /> : <AccessDenied />;
       case '/settings':
         return hasPermission('SETTINGS') ? <Settings /> : <AccessDenied />;
       default:
