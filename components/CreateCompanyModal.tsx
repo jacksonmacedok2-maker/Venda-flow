@@ -1,13 +1,15 @@
 
 import React, { useState } from 'react';
-import { Building2, Plus, Loader2, Sparkles, ShieldCheck, Zap, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Building2, Loader2, ShieldCheck, Zap, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { db } from '../services/database';
+import { useAuth } from '../contexts/AuthContext';
 
 interface CreateCompanyModalProps {
   onSuccess: () => void;
 }
 
 const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ onSuccess }) => {
+  const { setAuthenticatedCompany } = useAuth();
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -15,31 +17,30 @@ const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ onSuccess }) =>
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return; 
-    if (!name.trim()) return setError('O nome da empresa é obrigatório.');
+    const trimmedName = name.trim();
+    if (!trimmedName) return setError('O nome da empresa é obrigatório.');
 
     setLoading(true);
     setError('');
     
     try {
-      // Cria a empresa via RPC
-      await db.team.createCompany(name.trim());
+      // 1. Chama o RPC para criar empresa e membership
+      const newCompanyId = await db.team.createCompany(trimmedName);
       
-      // IMPORTANTE: Aguarda 1.5 segundos antes de disparar o sucesso.
-      // Isso dá tempo ao Supabase de processar os Triggers/RLS no backend.
+      // 2. Injeta os dados diretamente no AuthContext.
+      // Definimos o estado ANTES de qualquer outra ação para garantir o render do Dashboard.
+      setAuthenticatedCompany(newCompanyId, trimmedName, 'OWNER');
+      
+      // 3. Aguardamos um breve momento apenas para feedback visual e então fechamos o modal via parent
+      // Não chamamos refreshMembership aqui para evitar que a latência do banco limpe o estado que acabamos de setar
       setTimeout(() => {
         onSuccess();
-      }, 1500);
+      }, 500);
 
     } catch (err: any) {
       console.error('Erro na criação:', err);
-      
-      // Se for erro de duplicidade, significa que já criou, podemos seguir
-      if (err.message?.includes('memberships_company_id_user_id_key')) {
-        setTimeout(() => onSuccess(), 1000);
-      } else {
-        setError(err.message || 'Erro ao criar empresa. Tente novamente.');
-        setLoading(false);
-      }
+      setError(err.message || 'Erro ao criar empresa. Tente novamente.');
+      setLoading(false);
     }
   };
 

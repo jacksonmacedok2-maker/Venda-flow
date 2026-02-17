@@ -1,6 +1,6 @@
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { User, UserRole, Permission, Membership } from '../types';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { User, UserRole, Permission } from '../types';
 import { supabase } from '../services/supabase';
 import { db } from '../services/database';
 
@@ -16,6 +16,7 @@ interface AuthContextType {
   logout: () => void;
   refreshSession: () => Promise<void>;
   refreshMembership: () => Promise<void>;
+  setAuthenticatedCompany: (id: string, name: string, role: string) => void;
   isAuthenticated: boolean;
   loadingCompany: boolean;
   hasPermission: (permission: Permission) => boolean;
@@ -35,6 +36,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [membershipRole, setMembershipRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingCompany, setLoadingCompany] = useState(false);
+  
+  // Ref para rastrear se acabamos de definir uma empresa manualmente para evitar sobrescrita por delay de consulta
+  const justSetCompanyManual = useRef(false);
 
   const updateUserState = useCallback((supabaseUser: any) => {
     if (!supabaseUser) return;
@@ -50,6 +54,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const ensureCompany = useCallback(async (retryCount = 0) => {
+    // Se acabamos de setar manualmente, ignoramos consultas automáticas por 5 segundos
+    if (justSetCompanyManual.current && retryCount === 0) return;
+
     setLoadingCompany(true);
     
     try {
@@ -60,20 +67,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setMembershipRole(membership.role);
         setCompanyName(membership.companies?.name || 'Minha Empresa');
         setLoadingCompany(false);
-      } else if (retryCount < 3) {
-        // Se não encontrou, tenta novamente até 3 vezes com um pequeno intervalo
-        // Útil para quando o banco acabou de ser criado (latência de replicação)
-        console.log(`Tentativa ${retryCount + 1} de localizar empresa...`);
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        justSetCompanyManual.current = false;
+      } else if (retryCount < 4) {
+        // Se não encontrou, tenta novamente com backoff
+        console.log(`Tentativa ${retryCount + 1} de localizar empresa no banco...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
         return ensureCompany(retryCount + 1);
       } else {
-        setCompanyId(null);
-        setMembershipRole(null);
+        // Se após todas as tentativas não houver empresa, limpamos apenas se não houver um ID manual
+        if (!justSetCompanyManual.current) {
+          setCompanyId(null);
+          setMembershipRole(null);
+          setCompanyName(null);
+        }
         setLoadingCompany(false);
       }
     } catch (err) {
       console.warn('Erro ao buscar empresa:', err);
-      setCompanyId(null);
       setLoadingCompany(false);
     }
   }, []);
@@ -106,11 +116,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCompanyId(null);
         setCompanyName(null);
         setMembershipRole(null);
+        justSetCompanyManual.current = false;
       }
     });
 
     return () => subscription.unsubscribe();
   }, [updateUserState, ensureCompany]);
+
+  const setAuthenticatedCompany = (id: string, name: string, role: string) => {
+    justSetCompanyManual.current = true;
+    setCompanyId(id);
+    setCompanyName(name);
+    setMembershipRole(role);
+    setLoadingCompany(false);
+
+    // Proteção: após 8 segundos, permitimos que o 'ensure' volte a funcionar normalmente
+    setTimeout(() => {
+      justSetCompanyManual.current = false;
+    }, 8000);
+  };
 
   const login = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -158,6 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCompanyId(null);
     setCompanyName(null);
     setMembershipRole(null);
+    justSetCompanyManual.current = false;
     localStorage.clear();
   };
 
@@ -201,6 +226,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logout, 
       refreshSession,
       refreshMembership,
+      setAuthenticatedCompany,
       isAuthenticated: !!user, 
       loadingCompany,
       hasPermission

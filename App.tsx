@@ -30,7 +30,7 @@ const AppContent: React.FC = () => {
   
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
-  const { isAuthenticated, logout, hasPermission, companyId, loadingCompany, refreshMembership } = useAuth();
+  const { isAuthenticated, logout, hasPermission, companyId, loadingCompany } = useAuth();
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -84,7 +84,7 @@ const AppContent: React.FC = () => {
     }
 
     // Se estiver carregando dados da empresa, mostra loader
-    if (loadingCompany) {
+    if (loadingCompany && !companyId) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
           <div className="flex flex-col items-center gap-4">
@@ -95,9 +95,11 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Se estiver logado mas NÃO tiver empresa, obriga a criar
+    // Se estiver logado mas NÃO tiver empresa, obriga a criar.
+    // O callback onSuccess aqui não faz nada além de permitir que o componente re-renderize,
+    // pois o ID da empresa já foi injetado pelo modal.
     if (!companyId) {
-      return <CreateCompanyModal onSuccess={refreshMembership} />;
+      return <CreateCompanyModal onSuccess={() => {}} />;
     }
 
     switch (activeKey) {
