@@ -38,12 +38,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        updateUserState(session.user);
-        await ensureCompany();
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          updateUserState(session.user);
+          await ensureCompany();
+        }
+      } catch (err) {
+        console.error('Critical Auth Init Error:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     initAuth();
@@ -75,9 +80,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCompanyName(membership.companies?.name || 'Minha Empresa');
       } else {
         setCompanyId(null);
+        setMembershipRole(null);
+        setCompanyName(null);
       }
     } catch (err) {
       console.error('Error ensuring company:', err);
+      // Fallback em caso de erro de RLS ou tabela não existente
+      setCompanyId(null);
     } finally {
       setLoadingCompany(false);
     }
@@ -147,7 +156,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const hasPermission = (permission: Permission): boolean => {
     if (!user) return false;
-    // Admins ou Owners da empresa tem acesso total por padrão na lógica multi-tenant
     if (membershipRole === 'OWNER' || membershipRole === 'ADMIN') return true;
     return user.permissions.includes(permission);
   };
@@ -165,9 +173,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-600"></div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] animate-pulse">Sincronizando Segurança...</p>
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-brand-600"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="h-8 w-8 bg-brand-600/10 rounded-full"></div>
+            </div>
+          </div>
+          <div className="text-center space-y-2">
+            <p className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] animate-pulse">Sincronizando Segurança...</p>
+            <p className="text-[10px] text-slate-500 font-medium italic">Iniciando protocolo Nexero Enterprise</p>
+          </div>
         </div>
       </div>
     );

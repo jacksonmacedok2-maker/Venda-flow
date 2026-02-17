@@ -37,7 +37,6 @@ export const db = {
     const remainingQueue = [];
     for (const item of queue) {
       try {
-        // Fix: Corrected parameter passing for sync operations
         if (item.type === 'CLIENT') await db.clients.create(item.payload, item.payload.company_id, true);
         if (item.type === 'PRODUCT') await db.products.create(item.payload, item.payload.company_id, true);
         if (item.type === 'ORDER') await db.orders.create(item.payload.order, item.payload.items, item.payload.order.company_id);
@@ -50,27 +49,32 @@ export const db = {
 
   team: {
     async getMembership(): Promise<Membership | null> {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return null;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return null;
 
-      const { data, error } = await supabase
-        .from('memberships')
-        .select('*, companies(name)')
-        .eq('user_id', session.user.id)
-        .eq('status', 'ACTIVE')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        const { data, error } = await supabase
+          .from('memberships')
+          .select('*, companies(name)')
+          .eq('user_id', session.user.id)
+          .eq('status', 'ACTIVE')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
 
-      if (error) {
-        console.error('Error fetching membership:', error);
+        if (error) {
+          // Pode ocorrer se a tabela não existir ou erro de RLS
+          console.warn('Membership query warning:', error.message);
+          return null;
+        }
+        return data;
+      } catch (e) {
+        console.error('Membership fetch error:', e);
         return null;
       }
-      return data;
     },
 
     async createCompany(name: string): Promise<string> {
-      // Chama o RPC que cria empresa e membership atômicos
       const { data, error } = await supabase.rpc('create_company_for_owner', { 
         p_company_name: name 
       });
@@ -80,7 +84,7 @@ export const db = {
         throw new Error(error.message);
       }
       
-      return data; // Retorna o ID da empresa criada
+      return data;
     },
 
     async getInvitations(companyId: string): Promise<Invitation[]> {
@@ -101,14 +105,12 @@ export const db = {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
 
-      // Mapeamento de cargo
       let finalRole: InviteRole = 'SELLER';
       const r = role.toUpperCase();
       if (r.includes('ADMIN')) finalRole = 'ADMIN';
       else if (r.includes('VIEW') || r.includes('VISUAL')) finalRole = 'VIEWER';
       else finalRole = 'SELLER';
 
-      // NOTA: Token é UUID gerado no banco (default gen_random_uuid())
       const { data, error } = await supabase
         .from('invitations')
         .insert({
@@ -122,11 +124,7 @@ export const db = {
         .select()
         .single();
 
-      if (error) {
-        console.error('Insert Invitation Error:', error);
-        throw new Error(error.message);
-      }
-      
+      if (error) throw new Error(error.message);
       return data;
     },
 
@@ -251,7 +249,6 @@ export const db = {
     },
 
     async getNextCode(companyId: string): Promise<string> {
-      // Sequência baseada na empresa para evitar colisão entre tenants
       const { data, error } = await supabase
         .from('order_sequences')
         .select('current_value')
@@ -309,7 +306,6 @@ export const db = {
         const { error: itemsError } = await supabase.from('order_items').insert(itemsToInsert);
         if (itemsError) throw itemsError;
 
-        // Baixa de estoque apenas se concluído
         if (order.status === OrderStatus.COMPLETED) {
           for (const item of items) {
             const { data: prod } = await supabase.from('products').select('stock').eq('id', item.product_id).single();
@@ -363,7 +359,6 @@ export const db = {
     }
   },
 
-  // Fix: Added missing commercial and company settings methods
   commercial: {
     async getSettings() {
       const membership = await db.team.getMembership();
