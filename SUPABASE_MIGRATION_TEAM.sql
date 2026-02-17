@@ -1,13 +1,22 @@
 
 -- ======================================================
--- GESTÃO DE EQUIPE E MULTI-TENANCY - NEXERO
+-- GESTÃO DE EQUIPE E MULTI-TENANCY - NEXERO (FIXED V2)
 -- ======================================================
 
--- 1. Tabela de Membros (Multi-Tenancy)
+-- 1. Tabela de Empresas
+CREATE TABLE IF NOT EXISTS public.companies (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    owner_user_id uuid REFERENCES auth.users(id) NOT NULL,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
+);
+
+-- 2. Tabela de Membros (Multi-Tenancy)
 CREATE TABLE IF NOT EXISTS public.memberships (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid REFERENCES auth.users(id) NOT NULL,
-    company_id uuid NOT NULL, -- Pode ser o user_id do Owner original
+    company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
     role text NOT NULL CHECK (role IN ('OWNER', 'ADMIN', 'SELLER', 'VIEWER')),
     status text DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
     created_at timestamptz DEFAULT now(),
@@ -15,31 +24,23 @@ CREATE TABLE IF NOT EXISTS public.memberships (
     UNIQUE(user_id, company_id)
 );
 
--- 2. Tabela de Convites
-CREATE TABLE IF NOT EXISTS public.invitations (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id uuid NOT NULL,
-    invited_email text NOT NULL,
-    role text NOT NULL CHECK (role IN ('ADMIN', 'SELLER', 'VIEWER')),
-    status text DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACCEPTED', 'EXPIRED')),
-    token text NOT NULL UNIQUE,
-    expires_at timestamptz NOT NULL,
-    created_by uuid REFERENCES auth.users(id) NOT NULL,
-    accepted_at timestamptz,
-    created_at timestamptz DEFAULT now()
+-- 3. Habilitar RLS
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.memberships ENABLE ROW LEVEL SECURITY;
+
+-- 4. Políticas de Acesso
+DROP POLICY IF EXISTS "companies_view_members" ON public.companies;
+CREATE POLICY "companies_view_members" ON public.companies FOR SELECT TO authenticated 
+USING (
+    EXISTS (SELECT 1 FROM memberships WHERE company_id = companies.id AND user_id = auth.uid())
 );
 
--- 3. Habilitar RLS
-ALTER TABLE memberships ENABLE ROW LEVEL SECURITY;
-ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
-
--- 4. Políticas para Memberships
--- Usuário pode ver suas próprias participações
+DROP POLICY IF EXISTS "memberships_view_self" ON memberships;
 CREATE POLICY "memberships_view_self" ON memberships FOR SELECT TO authenticated 
 USING (auth.uid() = user_id);
 
--- Admins podem ver todos os membros da mesma empresa
-CREATE POLICY "memberships_view_company" ON memberships FOR SELECT TO authenticated 
+DROP POLICY IF EXISTS "memberships_admin_manage" ON memberships;
+CREATE POLICY "memberships_admin_manage" ON memberships FOR ALL TO authenticated 
 USING (
     EXISTS (
         SELECT 1 FROM memberships m 
@@ -49,26 +50,35 @@ USING (
     )
 );
 
--- 5. Políticas para Invitations
--- Só Admins/Owners podem criar/ver convites da empresa
-CREATE POLICY "invitations_manage_company" ON invitations FOR ALL TO authenticated 
-USING (
-    EXISTS (
-        SELECT 1 FROM memberships 
-        WHERE memberships.company_id = invitations.company_id 
-        AND memberships.user_id = auth.uid() 
-        AND memberships.role IN ('OWNER', 'ADMIN')
-    )
-)
-WITH CHECK (
-    EXISTS (
-        SELECT 1 FROM memberships 
-        WHERE memberships.company_id = invitations.company_id 
-        AND memberships.user_id = auth.uid() 
-        AND memberships.role IN ('OWNER', 'ADMIN')
-    )
-);
+-- 5. FUNÇÃO RPC CORRIGIDA (Resistente a Duplicidade)
+CREATE OR REPLACE FUNCTION public.create_company_for_owner(p_company_name text)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    new_company_id uuid;
+    v_user_id uuid;
+BEGIN
+    v_user_id := auth.uid();
+    
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'Usuário não autenticado';
+    END IF;
 
--- Permitir leitura pública do convite via Token (para a tela de aceite)
-CREATE POLICY "invitations_read_token" ON invitations FOR SELECT TO anon, authenticated
-USING (status = 'PENDING');
+    -- 1. Cria a empresa
+    INSERT INTO public.companies (name, owner_user_id)
+    VALUES (p_company_name, v_user_id)
+    RETURNING id INTO new_company_id;
+
+    -- 2. Cria o membership com proteção contra conflito
+    -- Se um trigger já criou o registro, o ON CONFLICT DO NOTHING evita o erro.
+    INSERT INTO public.memberships (user_id, company_id, role, status)
+    VALUES (v_user_id, new_company_id, 'OWNER', 'ACTIVE')
+    ON CONFLICT (user_id, company_id) DO NOTHING;
+
+    RETURN new_company_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_company_for_owner(text) TO authenticated;

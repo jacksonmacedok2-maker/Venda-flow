@@ -49,30 +49,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, []);
 
-  const ensureCompany = useCallback(async () => {
+  const ensureCompany = useCallback(async (retryCount = 0) => {
     setLoadingCompany(true);
     
-    // Timeout de 6 segundos para não travar o app se o Supabase demorar
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Timeout searching for company')), 6000)
-    );
-
     try {
-      const membershipPromise = db.team.getMembership();
-      const membership = await Promise.race([membershipPromise, timeoutPromise]) as Membership | null;
+      const membership = await db.team.getMembership();
 
       if (membership) {
         setCompanyId(membership.company_id);
         setMembershipRole(membership.role);
         setCompanyName(membership.companies?.name || 'Minha Empresa');
+        setLoadingCompany(false);
+      } else if (retryCount < 3) {
+        // Se não encontrou, tenta novamente até 3 vezes com um pequeno intervalo
+        // Útil para quando o banco acabou de ser criado (latência de replicação)
+        console.log(`Tentativa ${retryCount + 1} de localizar empresa...`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        return ensureCompany(retryCount + 1);
       } else {
         setCompanyId(null);
         setMembershipRole(null);
+        setLoadingCompany(false);
       }
     } catch (err) {
-      console.warn('Compay fetch skipped or failed:', err);
+      console.warn('Erro ao buscar empresa:', err);
       setCompanyId(null);
-    } finally {
       setLoadingCompany(false);
     }
   }, []);
@@ -80,21 +81,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // Timeout agressivo para a sessão inicial
-        const sessionPromise = supabase.auth.getSession();
-        const timeout = new Promise((_, r) => setTimeout(() => r('timeout'), 5000));
-        
-        const result: any = await Promise.race([sessionPromise, timeout]);
-        
-        if (result === 'timeout') throw new Error('Auth session timeout');
-        
-        const session = result.data?.session;
+        const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           updateUserState(session.user);
           await ensureCompany();
         }
       } catch (err) {
-        console.error('Critical Auth Init Error:', err);
+        console.error('Erro na inicialização da autenticação:', err);
       } finally {
         setLoading(false);
       }
@@ -105,7 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         updateUserState(session.user);
-        if (event === 'SIGNED_IN') {
+        if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
           await ensureCompany();
         }
       } else if (event === 'SIGNED_OUT') {
@@ -144,13 +137,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resendConfirmation = async (email: string) => {
-    const redirectUrl = window.location.origin + '/';
     const { error } = await supabase.auth.resend({
       type: 'signup',
       email: email,
-      options: {
-        emailRedirectTo: redirectUrl,
-      }
+      options: { emailRedirectTo: window.location.origin + '/' }
     });
     if (error) throw error;
   };
@@ -191,16 +181,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex flex-col items-center gap-6">
-          <div className="relative">
-            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-brand-600"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-8 w-8 bg-brand-600/10 rounded-full"></div>
-            </div>
-          </div>
-          <div className="text-center space-y-2">
-            <p className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] animate-pulse">Sincronizando Segurança...</p>
-            <p className="text-[10px] text-slate-500 font-medium italic">Validando acesso seguro</p>
-          </div>
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-600"></div>
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse">Sincronizando Segurança...</p>
         </div>
       </div>
     );

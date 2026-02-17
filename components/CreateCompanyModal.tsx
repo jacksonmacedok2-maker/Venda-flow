@@ -14,17 +14,32 @@ const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ onSuccess }) =>
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return; 
     if (!name.trim()) return setError('O nome da empresa é obrigatório.');
 
     setLoading(true);
     setError('');
+    
     try {
+      // Cria a empresa via RPC
       await db.team.createCompany(name.trim());
-      onSuccess();
+      
+      // IMPORTANTE: Aguarda 1.5 segundos antes de disparar o sucesso.
+      // Isso dá tempo ao Supabase de processar os Triggers/RLS no backend.
+      setTimeout(() => {
+        onSuccess();
+      }, 1500);
+
     } catch (err: any) {
-      setError(err.message || 'Erro ao criar empresa. Tente novamente.');
-    } finally {
-      setLoading(false);
+      console.error('Erro na criação:', err);
+      
+      // Se for erro de duplicidade, significa que já criou, podemos seguir
+      if (err.message?.includes('memberships_company_id_user_id_key')) {
+        setTimeout(() => onSuccess(), 1000);
+      } else {
+        setError(err.message || 'Erro ao criar empresa. Tente novamente.');
+        setLoading(false);
+      }
     }
   };
 
@@ -69,8 +84,9 @@ const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ onSuccess }) =>
                 <input 
                   type="text" 
                   required
+                  disabled={loading}
                   placeholder="Ex: Minha Empresa de Sucesso"
-                  className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-brand-600 rounded-3xl focus:outline-none transition-all text-slate-800 dark:text-white font-bold"
+                  className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-brand-600 rounded-3xl focus:outline-none transition-all text-slate-800 dark:text-white font-bold disabled:opacity-50"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
@@ -80,8 +96,8 @@ const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ onSuccess }) =>
             <div className="pt-2">
               <button 
                 type="submit" 
-                disabled={loading}
-                className="w-full py-6 bg-brand-600 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-brand-600/30 flex items-center justify-center gap-4 hover:bg-brand-700 active:scale-95 transition-all disabled:opacity-50"
+                disabled={loading || !name.trim()}
+                className="w-full py-6 bg-brand-600 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-brand-600/30 flex items-center justify-center gap-4 hover:bg-brand-700 active:scale-95 transition-all disabled:bg-slate-300 disabled:shadow-none"
               >
                 {loading ? <Loader2 className="animate-spin" /> : <ArrowRight size={20} />}
                 {loading ? 'CONFIGURANDO...' : 'INICIAR AGORA'}
