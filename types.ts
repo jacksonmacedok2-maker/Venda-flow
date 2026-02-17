@@ -1,9 +1,9 @@
 
 export enum OrderStatus {
-  PENDING = 'PENDING',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
-  DRAFT = 'DRAFT'
+  PENDING = 'PENDENTE',
+  COMPLETED = 'CONCLUÍDO',
+  CANCELLED = 'CANCELADO',
+  DRAFT = 'RASCUNHO'
 }
 
 export enum UserRole {
@@ -15,7 +15,7 @@ export enum UserRole {
 
 export type Permission = 'FINANCE' | 'INVENTORY' | 'PRODUCTS' | 'ORDERS' | 'POS' | 'SETTINGS' | 'REPORTS' | 'CLIENTS' | 'TEAM';
 
-export type InviteRole = 'ADMIN' | 'SELLER' | 'VIEWER';
+export type InviteRole = 'ADMINISTRADOR' | 'VENDEDOR' | 'VISUALIZADOR';
 
 export interface Invitation {
   id: string;

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
@@ -21,27 +21,29 @@ import { db } from './services/database';
 import { Loader2, ShieldCheck } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const [activeTab, setActiveTab] = useState(window.location.pathname);
+  // Roteamento baseado em chaves internas para máxima compatibilidade
+  const [activeKey, setActiveKey] = useState<string>(() => {
+    const hash = window.location.hash.replace('#', '');
+    return hash || 'dashboard';
+  });
+  
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const { isAuthenticated, logout, hasPermission } = useAuth();
 
+  // Sincroniza a chave ativa com o hash da URL para permitir "F5"
   useEffect(() => {
-    const handleLocationChange = () => {
-      let path = window.location.pathname;
-      if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
-      setActiveTab(path);
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash) setActiveKey(hash);
     };
-
-    window.addEventListener('popstate', handleLocationChange);
-    handleLocationChange();
-
-    return () => window.removeEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const navigateTo = (path: string) => {
-    window.history.pushState({}, '', path);
-    setActiveTab(path);
+  const navigateTo = (key: string) => {
+    setActiveKey(key);
+    window.location.hash = key;
   };
 
   useEffect(() => {
@@ -67,71 +69,49 @@ const AppContent: React.FC = () => {
   }, []);
 
   const renderContent = () => {
-    const path = activeTab.toLowerCase();
-    
-    // DETECÇÃO DE PARÂMETROS DE AUTH (Gmail Redirect)
+    // Tratamento de páginas de autenticação (URL baseada em Path ainda para Callbacks do Supabase)
+    const path = window.location.pathname;
     const queryParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     
-    const hasCode = queryParams.has('code');
-    const hasToken = hashParams.has('access_token');
-    const hasAuthError = queryParams.has('error') || hashParams.has('error');
-    
-    // Se houver erro de autenticação vindo do Supabase
-    if (hasAuthError && !path.includes('/auth/error')) {
-      return <AuthError setActiveTab={navigateTo} />;
-    }
+    if (queryParams.has('error') || hashParams.has('error')) return <AuthError setActiveTab={() => navigateTo('dashboard')} />;
+    if (queryParams.has('code') || hashParams.has('access_token')) return <AuthCallback setActiveTab={() => navigateTo('dashboard')} />;
+    if (path.includes('/auth/confirmed')) return <AuthConfirmed setActiveTab={() => navigateTo('dashboard')} />;
 
-    // Fluxo de Confirmação de E-mail (Prioridade Total)
-    if ((hasCode || hasToken) && !path.includes('/auth/confirmed') && !path.includes('/auth/error')) {
-      return <AuthCallback setActiveTab={navigateTo} />;
-    }
-
-    // Rotas de Estado Final
-    if (path.includes('/auth/confirmed')) return <AuthConfirmed setActiveTab={navigateTo} />;
-    if (path.includes('/auth/error')) return <AuthError setActiveTab={navigateTo} />;
-
-    // Bloqueio se não estiver logado e não for rota de auth
     if (!isAuthenticated) {
       return <Login />;
     }
 
-    // Rotas do Aplicativo Autenticado
-    switch (path) {
-      case '/':
-      case '/dashboard':
+    // Switch baseado na CHAVE de estado
+    switch (activeKey) {
+      case 'dashboard':
         return <Dashboard />;
-      case '/orders':
+      case 'orders':
         return hasPermission('ORDERS') ? <Orders /> : <AccessDenied />;
-      case '/clients':
+      case 'clients':
         return hasPermission('CLIENTS') ? <Clients /> : <AccessDenied />;
-      case '/pos':
+      case 'pos':
         return hasPermission('POS') ? <POS /> : <AccessDenied />;
-      case '/team':
+      case 'team':
         return hasPermission('TEAM') ? <Team /> : <AccessDenied />;
-      case '/products':
+      case 'products':
         return hasPermission('PRODUCTS') ? <Products /> : <AccessDenied />;
-      case '/inventory':
+      case 'inventory':
         return hasPermission('INVENTORY') ? <Inventory /> : <AccessDenied />;
-      case '/finance':
+      case 'finance':
         return hasPermission('FINANCE') ? <Finance /> : <AccessDenied />;
-      case '/reports':
+      case 'reports':
         return hasPermission('REPORTS') ? <Reports /> : <AccessDenied />;
-      case '/settings':
+      case 'settings':
         return hasPermission('SETTINGS') ? <Settings /> : <AccessDenied />;
       default:
-        return <Dashboard />; // Fallback seguro
+        return <Dashboard />;
     }
   };
 
-  // Determinar se deve mostrar o Layout (Menu lateral, etc)
-  const path = activeTab.toLowerCase();
-  const isAuthPage = path.includes('/auth/') || !isAuthenticated;
-  const queryParams = new URLSearchParams(window.location.search);
-  const hashParams = new URLSearchParams(window.location.hash.substring(1));
-  const hasAuthParams = queryParams.has('code') || hashParams.has('access_token');
+  const isAuthPage = !isAuthenticated || window.location.pathname.includes('/auth/');
 
-  if (isAuthPage || hasAuthParams) {
+  if (isAuthPage) {
     return (
       <div className="min-h-screen bg-white dark:bg-slate-950">
         {renderContent()}
@@ -140,14 +120,14 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={navigateTo} isOnline={isOnline} onLogout={logout}>
+    <Layout activeTab={activeKey} setActiveTab={navigateTo} isOnline={isOnline} onLogout={logout}>
       {isSyncing && (
         <div className="fixed bottom-20 right-4 z-[100] bg-brand-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce">
           <Loader2 className="animate-spin" size={18} />
           <span className="text-[10px] font-black uppercase tracking-widest">Sincronizando...</span>
         </div>
       )}
-      <div className="pb-10 md:pb-0">
+      <div className="pb-10 md:pb-0 h-full">
         {renderContent()}
       </div>
     </Layout>

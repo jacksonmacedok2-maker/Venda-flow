@@ -11,7 +11,7 @@ const Team: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<InviteRole>('SELLER');
+  const [role, setRole] = useState<InviteRole>('VENDEDOR');
   const [error, setError] = useState('');
   const [generatedLink, setGeneratedLink] = useState('');
   const [copied, setCopied] = useState(false);
@@ -157,22 +157,22 @@ const Team: React.FC = () => {
                    <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><Shield size={16}/></div>
                       <div>
-                        <p className="text-[10px] font-black uppercase">ADMIN</p>
+                        <p className="text-[10px] font-black uppercase">ADMINISTRADOR</p>
                         <p className="text-[9px] text-brand-100 font-medium leading-relaxed italic">Controle total sobre vendas, estoque, financeiro e configurações da empresa.</p>
                       </div>
                    </div>
                    <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><Shield size={16}/></div>
                       <div>
-                        <p className="text-[10px] font-black uppercase">SELLER (Vendedor)</p>
-                        <p className="text-[9px] text-brand-100 font-medium leading-relaxed italic">Acesso ao PDV e visualização de pedidos. Sem permissões de gestão.</p>
+                        <p className="text-[10px] font-black uppercase">VENDEDOR</p>
+                        <p className="text-[9px] text-brand-100 font-medium leading-relaxed italic">Acesso ao PDV e visualização de pedidos próprios. Sem permissões de gestão.</p>
                       </div>
                    </div>
                    <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><Shield size={16}/></div>
                       <div>
-                        <p className="text-[10px] font-black uppercase">VIEWER (Auditores)</p>
-                        <p className="text-[9px] text-brand-100 font-medium leading-relaxed italic">Apenas leitura de relatórios e BI. Não pode editar dados ou vender.</p>
+                        <p className="text-[10px] font-black uppercase">VISUALIZADOR</p>
+                        <p className="text-[9px] text-brand-100 font-medium leading-relaxed italic">Apenas leitura de relatórios e BI. Não pode editar dados ou realizar vendas.</p>
                       </div>
                    </div>
                 </div>
@@ -207,7 +207,7 @@ const Team: React.FC = () => {
                {!generatedLink ? (
                  <form onSubmit={handleGenerateInvite} className="space-y-6">
                     <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail do Funcionário</label>
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail do Colaborador</label>
                        <div className="relative">
                           <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
                           <input 
@@ -224,7 +224,7 @@ const Team: React.FC = () => {
                     <div className="space-y-2">
                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Cargo / Permissão</label>
                        <div className="grid grid-cols-3 gap-2">
-                          {(['ADMIN', 'SELLER', 'VIEWER'] as InviteRole[]).map(r => (
+                          {(['ADMINISTRADOR', 'VENDEDOR', 'VISUALIZADOR'] as InviteRole[]).map(r => (
                             <button
                               key={r}
                               type="button"
@@ -257,7 +257,7 @@ const Team: React.FC = () => {
                     </div>
                     <div>
                       <h4 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter italic">Link Gerado!</h4>
-                      <p className="text-xs text-slate-500 font-medium italic mt-1">Copie o link abaixo e envie para o funcionário.</p>
+                      <p className="text-xs text-slate-500 font-medium italic mt-1">Copie o link abaixo e envie para o colaborador.</p>
                     </div>
 
                     <div className="relative group">

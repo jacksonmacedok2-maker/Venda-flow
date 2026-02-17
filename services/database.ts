@@ -1,6 +1,6 @@
 
 import { supabase } from './supabase';
-import { Client, Order, Transaction, Product, OrderItem, CommercialSettings, CompanySettings, Invitation, InviteRole } from '../types';
+import { Client, Order, Transaction, Product, OrderItem, CommercialSettings, CompanySettings, Invitation, InviteRole, OrderStatus } from '../types';
 
 const STORAGE_KEYS = {
   CLIENTS: 'nexero_cache_clients',
@@ -60,12 +60,12 @@ export const db = {
         .limit(1)
         .maybeSingle();
 
-      if (error) {
-        // Fallback: se não houver memberships, usamos o ID do usuário como company_id padrão
-        // (Isso assume que a empresa principal tem o mesmo ID do dono inicial)
+      // Se der erro ou não houver membership, retornamos o próprio ID do usuário 
+      // como sendo o ID da empresa (Comportamento de OWNER inicial)
+      if (error || !data) {
         return session.user.id;
       }
-      return data?.company_id || session.user.id;
+      return data.company_id;
     },
 
     async getInvitations(): Promise<Invitation[]> {
@@ -90,7 +90,7 @@ export const db = {
 
       const token = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
       const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7); // 7 dias de expiração
+      expiresAt.setDate(expiresAt.getDate() + 7);
 
       const invite = {
         company_id: companyId,
@@ -421,7 +421,8 @@ export const db = {
         const { error: itemsError } = await supabase.from('order_items').insert(itemsToInsert);
         if (itemsError) throw itemsError;
 
-        if (order.status === 'COMPLETED') {
+        // Fix: Use OrderStatus.COMPLETED enum value for comparison instead of string literal 'COMPLETED'
+        if (order.status === OrderStatus.COMPLETED) {
           for (const item of items) {
             const { data: prod } = await supabase.from('products').select('stock').eq('id', item.product_id).single();
             if (prod) {
@@ -469,8 +470,9 @@ export const db = {
         const today = new Date();
         today.setHours(0,0,0,0);
         const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        const { data: ordersToday } = await supabase.from('orders').select('total_amount').gte('created_at', today.toISOString()).eq('status', 'COMPLETED');
-        const { data: ordersMonth } = await supabase.from('orders').select('total_amount').gte('created_at', firstDayOfMonth.toISOString()).eq('status', 'COMPLETED');
+        // Fix: Use OrderStatus.COMPLETED enum value for query equality check instead of string literal 'COMPLETED'
+        const { data: ordersToday } = await supabase.from('orders').select('total_amount').gte('created_at', today.toISOString()).eq('status', OrderStatus.COMPLETED);
+        const { data: ordersMonth } = await supabase.from('orders').select('total_amount').gte('created_at', firstDayOfMonth.toISOString()).eq('status', OrderStatus.COMPLETED);
         const { data: productsStock } = await supabase.from('products').select('stock');
         return {
           dailySales: ordersToday?.reduce((acc, curr) => acc + Number(curr.total_amount), 0) || 0,

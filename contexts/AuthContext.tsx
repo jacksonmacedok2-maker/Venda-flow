@@ -17,18 +17,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Lista mestra de permissões para administradores
+const ADMIN_PERMISSIONS: Permission[] = [
+  'FINANCE', 'INVENTORY', 'PRODUCTS', 'ORDERS', 'POS', 
+  'SETTINGS', 'REPORTS', 'CLIENTS', 'TEAM'
+];
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Detecta se a URL contém parâmetros de autenticação (code ou access_token)
     const queryParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     const hasAuthParams = queryParams.has('code') || hashParams.has('access_token');
 
     const initAuth = async () => {
-      // Se houver parâmetros de auth, deixamos o App.tsx decidir o que renderizar
       if (!hasAuthParams) {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
@@ -41,7 +45,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // Se detectar login ou mudança de estado e NÃO estivermos em fluxo de callback
       if (session?.user && !window.location.search.includes('code=')) {
         updateUserState(session.user);
       } else if (event === 'SIGNED_OUT') {
@@ -60,16 +63,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: supabaseUser.email || '',
       role: (metadata.role as UserRole) || UserRole.ADMIN,
       active: true,
-      permissions: (metadata.permissions as Permission[]) || ['FINANCE', 'INVENTORY', 'PRODUCTS', 'ORDERS', 'POS', 'SETTINGS', 'REPORTS', 'CLIENTS']
+      permissions: (metadata.permissions as Permission[]) || ADMIN_PERMISSIONS
     });
-  };
-
-  const refreshSession = async () => {
-    const { data, error } = await supabase.auth.refreshSession();
-    if (error) throw error;
-    if (data.user) {
-      updateUserState(data.user);
-    }
   };
 
   const login = async (email: string, password: string) => {
@@ -78,7 +73,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signUp = async (email: string, password: string, metadata: any): Promise<boolean> => {
-    // IMPORTANTE: Redirecionar para a URL base SEM subpastas para evitar o erro 404 do servidor de hospedagem
     const redirectUrl = window.location.origin + '/';
     
     const { data, error } = await supabase.auth.signUp({
@@ -88,7 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: {
           ...metadata,
           role: UserRole.ADMIN,
-          permissions: ['FINANCE', 'INVENTORY', 'PRODUCTS', 'ORDERS', 'POS', 'SETTINGS', 'REPORTS', 'CLIENTS']
+          permissions: ADMIN_PERMISSIONS
         },
         emailRedirectTo: redirectUrl,
       }
@@ -97,7 +91,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) throw error;
     
     if (data.session) {
-      // Se já logou direto, fazemos logout para forçar a confirmação visual
       await supabase.auth.signOut();
       return true; 
     }
@@ -132,8 +125,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const hasPermission = (permission: Permission): boolean => {
     if (!user) return false;
+    // Se for ADMIN, por segurança damos acesso a tudo se a lista estiver vazia ou se incluir o item
     if (user.role === UserRole.ADMIN) return true;
     return user.permissions.includes(permission);
+  };
+
+  const refreshSession = async () => {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) throw error;
+    if (data.user) updateUserState(data.user);
   };
 
   if (loading) {
