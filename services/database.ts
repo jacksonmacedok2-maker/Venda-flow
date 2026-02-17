@@ -50,26 +50,26 @@ export const db = {
   team: {
     async getMembership(): Promise<Membership | null> {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) return null;
+        const { data: authData } = await supabase.auth.getSession();
+        const user = authData.session?.user;
+        if (!user) return null;
 
         const { data, error } = await supabase
           .from('memberships')
           .select('*, companies(name)')
-          .eq('user_id', session.user.id)
+          .eq('user_id', user.id)
           .eq('status', 'ACTIVE')
           .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle();
 
         if (error) {
-          // Pode ocorrer se a tabela não existir ou erro de RLS
-          console.warn('Membership query warning:', error.message);
+          console.warn('Membership query skipped (table may not exist or RLS issues):', error.message);
           return null;
         }
         return data;
       } catch (e) {
-        console.error('Membership fetch error:', e);
+        console.error('Database connection error in getMembership:', e);
         return null;
       }
     },

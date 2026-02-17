@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, UserRole, Permission, Membership } from '../types';
 import { supabase } from '../services/supabase';
 import { db } from '../services/database';
@@ -36,10 +36,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [loadingCompany, setLoadingCompany] = useState(false);
 
+  const updateUserState = useCallback((supabaseUser: any) => {
+    if (!supabaseUser) return;
+    const metadata = supabaseUser.user_metadata || {};
+    setUser({
+      id: supabaseUser.id,
+      name: metadata.name || supabaseUser.email?.split('@')[0],
+      email: supabaseUser.email || '',
+      role: (metadata.role as UserRole) || UserRole.ADMIN,
+      active: true,
+      permissions: (metadata.permissions as Permission[]) || ADMIN_PERMISSIONS
+    });
+  }, []);
+
+  const ensureCompany = useCallback(async () => {
+    setLoadingCompany(true);
+    
+    // Timeout de 6 segundos para não travar o app se o Supabase demorar
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout searching for company')), 6000)
+    );
+
+    try {
+      const membershipPromise = db.team.getMembership();
+      const membership = await Promise.race([membershipPromise, timeoutPromise]) as Membership | null;
+
+      if (membership) {
+        setCompanyId(membership.company_id);
+        setMembershipRole(membership.role);
+        setCompanyName(membership.companies?.name || 'Minha Empresa');
+      } else {
+        setCompanyId(null);
+        setMembershipRole(null);
+      }
+    } catch (err) {
+      console.warn('Compay fetch skipped or failed:', err);
+      setCompanyId(null);
+    } finally {
+      setLoadingCompany(false);
+    }
+  }, []);
+
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        // Timeout agressivo para a sessão inicial
+        const sessionPromise = supabase.auth.getSession();
+        const timeout = new Promise((_, r) => setTimeout(() => r('timeout'), 5000));
+        
+        const result: any = await Promise.race([sessionPromise, timeout]);
+        
+        if (result === 'timeout') throw new Error('Auth session timeout');
+        
+        const session = result.data?.session;
         if (session?.user) {
           updateUserState(session.user);
           await ensureCompany();
@@ -68,41 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  const ensureCompany = async () => {
-    setLoadingCompany(true);
-    try {
-      const membership = await db.team.getMembership();
-      if (membership) {
-        setCompanyId(membership.company_id);
-        setMembershipRole(membership.role);
-        setCompanyName(membership.companies?.name || 'Minha Empresa');
-      } else {
-        setCompanyId(null);
-        setMembershipRole(null);
-        setCompanyName(null);
-      }
-    } catch (err) {
-      console.error('Error ensuring company:', err);
-      // Fallback em caso de erro de RLS ou tabela não existente
-      setCompanyId(null);
-    } finally {
-      setLoadingCompany(false);
-    }
-  };
-
-  const updateUserState = (supabaseUser: any) => {
-    const metadata = supabaseUser.user_metadata || {};
-    setUser({
-      id: supabaseUser.id,
-      name: metadata.name || supabaseUser.email?.split('@')[0],
-      email: supabaseUser.email || '',
-      role: (metadata.role as UserRole) || UserRole.ADMIN,
-      active: true,
-      permissions: (metadata.permissions as Permission[]) || ADMIN_PERMISSIONS
-    });
-  };
+  }, [updateUserState, ensureCompany]);
 
   const login = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -151,6 +166,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await supabase.auth.signOut();
     setUser(null);
     setCompanyId(null);
+    setCompanyName(null);
+    setMembershipRole(null);
     localStorage.clear();
   };
 
@@ -182,7 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           </div>
           <div className="text-center space-y-2">
             <p className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] animate-pulse">Sincronizando Segurança...</p>
-            <p className="text-[10px] text-slate-500 font-medium italic">Iniciando protocolo Nexero Enterprise</p>
+            <p className="text-[10px] text-slate-500 font-medium italic">Validando acesso seguro</p>
           </div>
         </div>
       </div>
