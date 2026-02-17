@@ -10,35 +10,37 @@ interface AuthCallbackProps {
 const AuthCallback: React.FC<AuthCallbackProps> = ({ setActiveTab }) => {
   useEffect(() => {
     const handleAuthCallback = async () => {
+      // 1. Limpa qualquer lixo de sessão que possa ter vindo no carregamento da página
+      localStorage.clear();
+
       const queryParams = new URLSearchParams(window.location.search);
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const code = queryParams.get('code') || hashParams.get('code');
+      
+      // Priorizamos o 'code' (Fluxo PKCE)
+      const code = queryParams.get('code');
+      // Token via fragmento (Fluxo Implícito - Padrão do Supabase se não configurado)
+      const accessToken = hashParams.get('access_token');
 
-      if (code) {
-        try {
-          // 1. Troca o código pela sessão (valida o e-mail no Supabase)
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-          
-          // 2. FORÇA O LOGOUT IMEDIATO
-          // Isso impede que o celular entre no app.
-          await supabase.auth.signOut({ scope: 'local' });
-          
-          // 3. Limpa qualquer rastro local
-          localStorage.clear(); 
-          
-          // 4. Redireciona para a tela de confirmação visual
-          setActiveTab('/auth/confirmed');
-        } catch (err) {
-          console.error('Erro crítico no callback:', err);
-          setActiveTab('/auth/error');
+      try {
+        if (code) {
+          // Valida o e-mail trocando o código pela sessão
+          await supabase.auth.exchangeCodeForSession(code);
+        } else if (accessToken) {
+          // Se veio via fragmento, o Supabase já tentou logar, nós apenas confirmamos
+          console.log("Validado via token de fragmento");
+        } else {
+          throw new Error("Nenhum código ou token encontrado");
         }
-      } else {
-        // Fallback: se não houver código, verifica se há sessão para limpar
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          await supabase.auth.signOut();
-        }
+        
+        // LOGOUT IMEDIATO: Desloga o usuário deste dispositivo (celular)
+        // Isso garante que ele não entre no Dashboard aqui.
+        await supabase.auth.signOut({ scope: 'global' });
+        localStorage.clear(); // Limpeza dupla por segurança
+        
+        // Vai para a tela de Sucesso
+        setActiveTab('/auth/confirmed');
+      } catch (err) {
+        console.error('Erro no callback:', err);
         setActiveTab('/auth/error');
       }
     };
@@ -57,10 +59,10 @@ const AuthCallback: React.FC<AuthCallbackProps> = ({ setActiveTab }) => {
       <div className="space-y-3">
         <div className="flex items-center justify-center gap-2">
            <Loader2 size={16} className="animate-spin text-brand-600" />
-           <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter italic">Validando Acesso</h2>
+           <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter italic">Verificando Credenciais</h2>
         </div>
         <p className="text-sm text-slate-500 dark:text-slate-400 font-bold italic max-w-xs mx-auto leading-relaxed">
-          Processando sua chave de segurança Nexero...
+          Sincronizando chave de segurança com a nuvem Nexero...
         </p>
       </div>
     </div>

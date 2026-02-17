@@ -22,20 +22,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Verifica se estamos em uma rota de callback para evitar flash de login automático
-    const isCallback = window.location.pathname.startsWith('/auth/');
+    // Detecta se a URL contém parâmetros de autenticação (code ou access_token)
+    const hasAuthParams = 
+      window.location.search.includes('code=') || 
+      window.location.hash.includes('access_token=') ||
+      window.location.pathname.startsWith('/auth/');
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user && !isCallback) {
-        updateUserState(session.user);
+    const initAuth = async () => {
+      // Se tiver parâmetros de auth na URL, nós NÃO carregamos o usuário agora.
+      // Deixamos o AuthCallback lidar com isso e deslogar.
+      if (!hasAuthParams) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          updateUserState(session.user);
+        }
       }
       setLoading(false);
-    });
+    };
+
+    initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // Se for um evento de login (SIGNED_IN) mas estivermos no callback, não atualizamos o estado 'user' global
-      // Isso impede que o App.tsx renderize o Dashboard no celular antes do AuthCallback chamar o signOut.
-      if (session?.user && !window.location.pathname.startsWith('/auth/')) {
+      // Regra de Ouro: Se estivermos em uma rota /auth/, ignoramos o evento de login automático
+      const isAuthPath = window.location.pathname.startsWith('/auth/');
+      
+      if (session?.user && !isAuthPath) {
         updateUserState(session.user);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
@@ -86,9 +97,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (error) throw error;
     
+    // Se o Supabase logar direto (ambiente de teste), nós forçamos logout para manter o fluxo
     if (data.session) {
-      updateUserState(data.user);
-      return false; 
+      await supabase.auth.signOut();
+      return true; 
     }
     
     return !!(data.user && !data.session);
@@ -115,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    localStorage.clear();
   };
 
   const hasPermission = (permission: Permission): boolean => {
@@ -128,7 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-600"></div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] animate-pulse">Sincronizando Segurança...</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.3em] animate-pulse">Protegendo Sessão...</p>
         </div>
       </div>
     );
