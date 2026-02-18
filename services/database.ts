@@ -71,8 +71,6 @@ export const db = {
     },
 
     async getMembers(companyId: string): Promise<Membership[]> {
-       // RPC ou consulta direta com join para pegar e-mail do auth.users (necessário permissão ou tabela profiles)
-       // Para simplicidade e eficácia, consultaremos a memberships e tentaremos buscar o perfil se existir
        const { data, error } = await supabase
          .from('memberships')
          .select('*')
@@ -108,7 +106,7 @@ export const db = {
       return data;
     },
 
-    async generateInvitation(companyId: string, email: string, name: string, role: string): Promise<Invitation> {
+    async generateInvitation(companyId: string, email: string, name: string | null, role: string): Promise<Invitation> {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Não autorizado");
 
@@ -119,7 +117,7 @@ export const db = {
         .from('invitations')
         .insert({
           company_id: companyId,
-          invited_name: name.trim() || null,
+          invited_name: name ? name.trim() : null,
           invited_email: email.trim().toLowerCase(),
           role: role as InviteRole,
           status: 'PENDING',
@@ -131,6 +129,14 @@ export const db = {
 
       if (error) throw new Error(error.message);
       return data;
+    },
+
+    async updateInvitationName(id: string, name: string): Promise<void> {
+      const { error } = await supabase
+        .from('invitations')
+        .update({ invited_name: name.trim() || null })
+        .eq('id', id);
+      if (error) throw error;
     },
 
     async deleteInvitation(id: string): Promise<void> {

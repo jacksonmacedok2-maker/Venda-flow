@@ -34,7 +34,7 @@ export interface Membership {
 export interface Invitation {
   id: string;
   company_id: string;
-  invited_name: string;
+  invited_name?: string | null;
   invited_email: string;
   role: InviteRole;
   status: 'PENDING' | 'ACCEPTED' | 'EXPIRED';
