@@ -24,6 +24,8 @@ export interface Membership {
   role: 'OWNER' | 'ADMIN' | 'SELLER' | 'VIEWER';
   status: 'ACTIVE' | 'INACTIVE';
   created_at: string;
+  user_email?: string;
+  user_name?: string;
   companies?: {
     name: string;
   };
@@ -32,6 +34,7 @@ export interface Membership {
 export interface Invitation {
   id: string;
   company_id: string;
+  invited_name: string;
   invited_email: string;
   role: InviteRole;
   status: 'PENDING' | 'ACCEPTED' | 'EXPIRED';

@@ -24,63 +24,89 @@ CREATE TABLE IF NOT EXISTS public.memberships (
     UNIQUE(user_id, company_id)
 );
 
--- 3. Habilitar RLS
+-- 3. Tabela de Convites (Aprimorada)
+CREATE TABLE IF NOT EXISTS public.invitations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
+    invited_name text NOT NULL,
+    invited_email text NOT NULL,
+    role text NOT NULL CHECK (role IN ('ADMIN', 'SELLER', 'VIEWER')),
+    token text DEFAULT encode(gen_random_bytes(32), 'hex') UNIQUE,
+    status text DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACCEPTED', 'EXPIRED')),
+    expires_at timestamptz NOT NULL,
+    created_at timestamptz DEFAULT now(),
+    created_by uuid REFERENCES auth.users(id)
+);
+
+-- Garantir coluna de nome caso a tabela já exista
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'invitations' AND COLUMN_NAME = 'invited_name') THEN
+        ALTER TABLE public.invitations ADD COLUMN invited_name text NOT NULL DEFAULT 'Convidado';
+    END IF;
+END $$;
+
+-- 4. Habilitar RLS
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.memberships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invitations ENABLE ROW LEVEL SECURITY;
 
--- 4. Políticas de Acesso (Empresas)
+-- 5. Políticas de Acesso
 DROP POLICY IF EXISTS "companies_owner_access" ON public.companies;
 CREATE POLICY "companies_owner_access" ON public.companies FOR ALL TO authenticated 
 USING (owner_user_id = auth.uid());
 
-DROP POLICY IF EXISTS "companies_member_view" ON public.companies;
-CREATE POLICY "companies_member_view" ON public.companies FOR SELECT TO authenticated 
-USING (
-    EXISTS (SELECT 1 FROM memberships WHERE company_id = companies.id AND user_id = auth.uid())
-);
-
--- 5. Políticas de Acesso (Membros)
-DROP POLICY IF EXISTS "memberships_view_self" ON memberships;
-CREATE POLICY "memberships_view_self" ON memberships FOR SELECT TO authenticated 
-USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "memberships_owner_manage" ON memberships;
-CREATE POLICY "memberships_owner_manage" ON memberships FOR ALL TO authenticated 
+DROP POLICY IF EXISTS "memberships_manage" ON memberships;
+CREATE POLICY "memberships_manage" ON memberships FOR ALL TO authenticated 
 USING (
     EXISTS (
-        SELECT 1 FROM companies c 
-        WHERE c.id = memberships.company_id AND c.owner_user_id = auth.uid()
+        SELECT 1 FROM memberships m 
+        WHERE m.company_id = memberships.company_id 
+        AND m.user_id = auth.uid() 
+        AND m.role IN ('OWNER', 'ADMIN')
     )
 );
 
--- 6. FUNÇÃO RPC
-CREATE OR REPLACE FUNCTION public.create_company_for_owner(p_company_name text)
-RETURNS uuid
+DROP POLICY IF EXISTS "invitations_manage" ON invitations;
+CREATE POLICY "invitations_manage" ON invitations FOR ALL TO authenticated 
+USING (
+    EXISTS (
+        SELECT 1 FROM memberships m 
+        WHERE m.company_id = invitations.company_id 
+        AND m.user_id = auth.uid() 
+        AND m.role IN ('OWNER', 'ADMIN')
+    )
+);
+
+-- 6. FUNÇÃO RPC PARA ACEITAR CONVITE
+CREATE OR REPLACE FUNCTION public.accept_invitation(p_token text)
+RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-    new_company_id uuid;
+    v_invite invitations;
     v_user_id uuid;
 BEGIN
     v_user_id := auth.uid();
     
-    IF v_user_id IS NULL THEN
-        RAISE EXCEPTION 'Usuário não autenticado';
+    -- Busca convite válido
+    SELECT * INTO v_invite FROM invitations 
+    WHERE token = p_token AND status = 'PENDING' AND expires_at > now();
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Convite inválido ou expirado';
     END IF;
 
-    -- 1. Cria a empresa
-    INSERT INTO public.companies (name, owner_user_id)
-    VALUES (p_company_name, v_user_id)
-    RETURNING id INTO new_company_id;
-
-    -- 2. Cria o membership
+    -- Cria o membership
     INSERT INTO public.memberships (user_id, company_id, role, status)
-    VALUES (v_user_id, new_company_id, 'OWNER', 'ACTIVE')
-    ON CONFLICT (user_id, company_id) DO NOTHING;
+    VALUES (v_user_id, v_invite.company_id, v_invite.role, 'ACTIVE')
+    ON CONFLICT (user_id, company_id) DO UPDATE 
+    SET role = EXCLUDED.role, status = 'ACTIVE';
 
-    RETURN new_company_id;
+    -- Marca convite como aceito
+    UPDATE invitations SET status = 'ACCEPTED' WHERE id = v_invite.id;
+
+    RETURN true;
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.create_company_for_owner(text) TO authenticated;

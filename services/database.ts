@@ -70,6 +70,26 @@ export const db = {
       }
     },
 
+    async getMembers(companyId: string): Promise<Membership[]> {
+       // RPC ou consulta direta com join para pegar e-mail do auth.users (necessário permissão ou tabela profiles)
+       // Para simplicidade e eficácia, consultaremos a memberships e tentaremos buscar o perfil se existir
+       const { data, error } = await supabase
+         .from('memberships')
+         .select('*')
+         .eq('company_id', companyId);
+       
+       if (error) throw error;
+       return data;
+    },
+
+    async removeMember(membershipId: string): Promise<void> {
+      const { error } = await supabase
+        .from('memberships')
+        .delete()
+        .eq('id', membershipId);
+      if (error) throw error;
+    },
+
     async createCompany(name: string): Promise<string> {
       const { data, error } = await supabase.rpc('create_company_for_owner', { 
         p_company_name: name 
@@ -88,7 +108,7 @@ export const db = {
       return data;
     },
 
-    async generateInvitation(companyId: string, email: string, role: string): Promise<Invitation> {
+    async generateInvitation(companyId: string, email: string, name: string, role: string): Promise<Invitation> {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Não autorizado");
 
@@ -99,6 +119,7 @@ export const db = {
         .from('invitations')
         .insert({
           company_id: companyId,
+          invited_name: name.trim() || null,
           invited_email: email.trim().toLowerCase(),
           role: role as InviteRole,
           status: 'PENDING',
@@ -112,7 +133,6 @@ export const db = {
       return data;
     },
 
-    // Fix: Added missing deleteInvitation method
     async deleteInvitation(id: string): Promise<void> {
       const { error } = await supabase
         .from('invitations')
@@ -272,7 +292,6 @@ export const db = {
   },
 
   finance: {
-    // Fix: Added missing getTransactions method
     async getTransactions(): Promise<Transaction[]> {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return [];

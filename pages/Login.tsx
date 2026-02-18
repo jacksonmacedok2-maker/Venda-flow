@@ -33,15 +33,25 @@ const Login: React.FC = () => {
   });
 
   useEffect(() => {
-    // Verificar se há um modo específico vindo da URL (ex: convite redirecionando para cadastro)
     const params = new URLSearchParams(window.location.search);
     const forcedMode = params.get('mode');
-    if (forcedMode === 'SIGNUP') setMode('SIGNUP');
+    const invitedEmail = params.get('email');
+    const invitedName = params.get('name');
+    
+    if (forcedMode === 'SIGNUP') {
+      setMode('SIGNUP');
+      if (invitedEmail) {
+        setSignupData(prev => ({ 
+          ...prev, 
+          email: invitedEmail, 
+          name: invitedName || '',
+          companyName: 'Equipe Nexero' // Nome temporário para convidados
+        }));
+      }
+    }
 
     if (isAuthenticated) {
       setIsRedirecting(true);
-      
-      // Se houver um redirect na URL, processa após autenticar
       const redirectPath = params.get('redirect');
       if (redirectPath) {
         setTimeout(() => {
